@@ -42,6 +42,7 @@ final class StatusBarController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let notificationController: NotificationController
     private var currentPayload = StatusPayload(state: .idle)
+    private var workingAnimator: Timer?
 
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
@@ -60,10 +61,45 @@ final class StatusBarController: NSObject {
                 button.toolTip = self.tooltip(for: payload)
             }
 
+            if payload.state == .working {
+                self.startWorkingAnimation()
+            } else {
+                self.stopWorkingAnimation()
+            }
+
             if previousState != payload.state {
                 self.notificationController.notifyIfNeeded(from: previousState, to: payload)
             }
         }
+    }
+
+    // MARK: - Working 脉冲动画
+
+    private var animationStartTime: Date?
+
+    private func startWorkingAnimation() {
+        guard workingAnimator == nil else { return }
+
+        animationStartTime = Date()
+        let minAlpha: CGFloat = 0.3
+        let period: TimeInterval = 1.0
+
+        workingAnimator = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { [weak self] _ in
+            guard let self = self, let startTime = self.animationStartTime else { return }
+            let elapsed = Date().timeIntervalSince(startTime)
+            let phase = (elapsed / period).truncatingRemainder(dividingBy: 1.0)
+            let alpha = minAlpha + (1 - minAlpha) * CGFloat(0.5 + 0.5 * sin(phase * 2 * .pi))
+            DispatchQueue.main.async {
+                self.statusItem.button?.alphaValue = alpha
+            }
+        }
+    }
+
+    private func stopWorkingAnimation() {
+        workingAnimator?.invalidate()
+        workingAnimator = nil
+        animationStartTime = nil
+        statusItem.button?.alphaValue = 1.0
     }
 
     private func configureStatusItem() {
