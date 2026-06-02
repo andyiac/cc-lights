@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try StatusFileStore.ensureDirectoryExists()
             if try StatusFileStore.read() == nil {
-                try StatusFileStore.write(StatusPayload(state: .idle))
+                try StatusFileStore.write(StatusPayload(state: .offline))
             }
         } catch {
             NSAlert.showError(title: "无法初始化状态文件", message: error.localizedDescription)
@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class StatusBarController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let notificationController: NotificationController
-    private var currentPayload = StatusPayload(state: .idle)
+    private var currentPayload = StatusPayload(state: .offline)
     private var workingAnimator: Timer?
 
     init(notificationController: NotificationController) {
@@ -109,7 +109,7 @@ final class StatusBarController: NSObject {
             return
         }
 
-        button.image = StatusIcon.image(for: .idle)
+        button.image = StatusIcon.image(for: .offline)
         button.target = self
         button.action = #selector(statusItemClicked)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -191,7 +191,7 @@ final class StatusBarController: NSObject {
             showWaitingDecision()
         case .error:
             showErrorDetail()
-        case .working, .idle:
+        case .working, .idle, .offline:
             focusClaudeCodeContext()
         }
     }
@@ -325,6 +325,8 @@ enum StatusIcon {
 
     private static func color(for state: StatusState) -> NSColor {
         switch state {
+        case .offline:
+            return NSColor(calibratedWhite: 142.0 / 255.0, alpha: 1.0)
         case .working:
             return NSColor(calibratedRed: 0.0, green: 122.0 / 255.0, blue: 1.0, alpha: 1.0)
         case .waiting:

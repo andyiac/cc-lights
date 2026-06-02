@@ -60,6 +60,7 @@ func usage() -> String {
     """
     用法:
       cc-statusctl idle [--message 文本] [--task 任务名]
+      cc-statusctl offline [--message 文本] [--task 任务名]
       cc-statusctl working [--message 文本] [--task 任务名]
       cc-statusctl waiting [--message 文本] [--task 任务名]
       cc-statusctl error [--message 文本] [--task 任务名]
@@ -83,7 +84,7 @@ do {
     let parsed = try parse(arguments: Array(CommandLine.arguments.dropFirst()))
 
     switch parsed.command {
-    case "idle", "working", "waiting", "error":
+    case "idle", "offline", "working", "waiting", "error":
         guard let state = StatusState(rawValue: parsed.command) else {
             throw CommandError.unknownCommand(parsed.command)
         }

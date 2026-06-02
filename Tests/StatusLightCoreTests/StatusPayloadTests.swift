@@ -3,6 +3,7 @@ import XCTest
 
 final class StatusPayloadTests: XCTestCase {
     func testStatusStateDisplayNamesMatchPRDStates() {
+        XCTAssertEqual(StatusState.offline.displayName, "无会话")
         XCTAssertEqual(StatusState.working.displayName, "工作中")
         XCTAssertEqual(StatusState.waiting.displayName, "等待决策")
         XCTAssertEqual(StatusState.idle.displayName, "空闲/完成")

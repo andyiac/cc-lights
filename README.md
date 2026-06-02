@@ -1,6 +1,6 @@
 # Claude Code Status Light
 
-macOS 状态栏四色状态灯 App，通过监控本地状态文件，实时显示 Claude Code 当前状态。
+macOS 状态栏五色状态灯 App，通过监控本地状态文件，实时显示 Claude Code 当前状态。
 
 ![状态灯颜色](./docs/status-colors.png)
 
@@ -8,9 +8,10 @@ macOS 状态栏四色状态灯 App，通过监控本地状态文件，实时显�
 
 | 灯色 | 状态值 | 含义 | 显示效果 | 说明 |
 | --- | --- | --- | --- | --- |
+| ⚪️ 灰色 | `offline` | 无会话 | 常亮 | 没有可跟踪的 Claude Code session，或 session 已退出 |
 | 🔵 蓝色 | `working` | 工作中 | 脉冲呼吸（30% ↔ 100% 透明度，1 秒周期） | Claude Code 正在自动执行任务 |
 | 🟡 黄色 | `waiting` | 等待决策 | 常亮 | 需要用户做决策或确认 |
-| 🟢 绿色 | `idle` | 空闲 | 常亮 | 空闲或上次任务完成 |
+| 🟢 绿色 | `idle` | 空闲 | 常亮 | 有 Claude Code session，且当前空闲或上次任务完成 |
 | 🔴 红色 | `error` | 错误 | 常亮 | 执行失败或异常 |
 
 ---
@@ -46,7 +47,7 @@ make install
 make run
 ```
 
-启动后，菜单栏会出现一个圆形状态灯（默认绿色）。App 以 **accessory** 模式运行，不会有 Dock 图标。
+启动后，菜单栏会出现一个圆形状态灯（默认灰色，表示尚未检测到 Claude Code session）。App 以 **accessory** 模式运行，不会有 Dock 图标。
 
 ---
 
@@ -61,7 +62,7 @@ make run
 
 #### 左键点击的快捷行为
 
-- **🔵 工作中 / 🟢 空闲**：打开终端或 VS Code（尝试按顺序打开 iTerm2 → Terminal → VS Code）
+- **⚪️ 无会话 / 🔵 工作中 / 🟢 空闲**：打开终端或 VS Code（尝试按顺序打开 iTerm2 → Terminal → VS Code）
 - **🟡 等待决策**：弹出对话框，显示等待消息，可选择"打开上下文"或"重置为绿灯"
 - **🔴 错误**：弹出错误详情对话框，可选择"重置为绿灯"、"打开上下文"或"保留红灯"
 
@@ -83,6 +84,7 @@ make run
 cc-statusctl working --task "编译 main.go"
 cc-statusctl waiting --message "需要确认危险操作"
 cc-statusctl idle
+cc-statusctl offline --message "Claude Code session 已退出"
 cc-statusctl error --message "构建失败：编译器报错"
 
 # 重置为绿色（等价于 cc-statusctl idle）
@@ -100,6 +102,8 @@ cc-statusctl path
 ```bash
 swift run cc-statusctl working --task "编译 main.go"
 swift run cc-statusctl waiting --message "需要确认危险操作"
+swift run cc-statusctl idle
+swift run cc-statusctl offline --message "Claude Code session 已退出"
 swift run cc-statusctl error --message "构建失败"
 swift run cc-statusctl reset
 swift run cc-statusctl show
@@ -127,6 +131,11 @@ swift run cc-statusctl path
 ```
 
 多个进程间通过此文件共享状态：App 监控文件变更实时更新灯色，CLI 工具写入新状态。App 和 CLI 无需同时启动——可以只使用 CLI 写入状态，App 负责显示。
+
+`idle` 和 `offline` 的区别：
+
+- `idle` / 绿灯：Claude Code session 仍然存在，只是当前没有任务，可以继续发新任务。
+- `offline` / 灰灯：没有活跃 Claude Code session，或用户已经退出 Claude Code。
 
 ---
 
@@ -163,6 +172,12 @@ App 自动推送系统通知的场景：
 
 ```bash
 #!/bin/bash
+# ~/.claude/hooks/on_session_end.sh  — Claude Code session 退出时
+/usr/local/bin/cc-statusctl offline --message "Claude Code session 已退出"
+```
+
+```bash
+#!/bin/bash
 # ~/.claude/hooks/on_task_error.sh  — 任务出错
 /usr/local/bin/cc-statusctl error --message "任务执行失败，退出码：$?"
 ```
@@ -185,6 +200,7 @@ App 自动推送系统通知的场景：
 !cc-statusctl waiting --message "请确认接口变更"
 !cc-statusctl error --message "测试失败"
 !cc-statusctl idle
+!cc-statusctl offline --message "Claude Code session 已退出"
 ```
 
 在 Claude Code 中，以 `!` 开头的命令会直接在终端执行，输出会回到对话中。
@@ -210,7 +226,7 @@ make clean
 cc-status/
 ├── Sources/
 │   ├── StatusLightCore/       # 核心库
-│   │   ├── StatusState.swift   # 状态枚举（working/waiting/idle/error）
+│   │   ├── StatusState.swift   # 状态枚举（offline/working/waiting/idle/error）
 │   │   ├── StatusPayload.swift # 状态数据模型
 │   │   └── StatusFileStore.swift # 状态文件读写
 │   ├── ClaudeCodeStatusLight/  # 菜单栏 App

@@ -1,6 +1,7 @@
 import Foundation
 
 public enum StatusState: String, CaseIterable, Codable {
+    case offline
     case working
     case waiting
     case idle
@@ -8,6 +9,8 @@ public enum StatusState: String, CaseIterable, Codable {
 
     public var displayName: String {
         switch self {
+        case .offline:
+            return "无会话"
         case .working:
             return "工作中"
         case .waiting:
@@ -21,6 +24,8 @@ public enum StatusState: String, CaseIterable, Codable {
 
     public var tooltip: String {
         switch self {
+        case .offline:
+            return "无 Claude Code 会话"
         case .working:
             return "Claude Code 工作中..."
         case .waiting:
