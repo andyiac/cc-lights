@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = StatusBarController(notificationController: notificationController)
         statusBarController = controller
 
+        ClaudeCodeConfigChecker.checkAndWarnIfNeeded()
+
         let monitor = StatusFileMonitor { [weak controller] payload in
             controller?.apply(payload)
         }
@@ -166,6 +168,10 @@ final class StatusBarController: NSObject {
         notificationsItem.state = notificationController.isEnabled ? .on : .off
         menu.addItem(notificationsItem)
 
+        let configItem = NSMenuItem(title: "检查 Claude Code 集成...", action: #selector(checkClaudeConfig), keyEquivalent: "")
+        configItem.target = self
+        menu.addItem(configItem)
+
         menu.addItem(.separator())
 
         let openItem = NSMenuItem(title: "打开 Claude Code 上下文", action: #selector(openClaudeCodeContext), keyEquivalent: "o")
@@ -219,6 +225,10 @@ final class StatusBarController: NSObject {
         if notificationController.isEnabled {
             notificationController.requestAuthorizationIfNeeded()
         }
+    }
+
+    @objc private func checkClaudeConfig() {
+        ClaudeCodeConfigChecker.check()
     }
 
     @objc private func openClaudeCodeContext() {
@@ -545,6 +555,86 @@ private extension NSAlert {
             alert.informativeText = message
             alert.runModal()
         }
+    }
+}
+
+// MARK: - Claude Code 集成检查
+
+enum ClaudeCodeConfigChecker {
+    private static let claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".claude/settings.json")
+
+    private static let hasCheckedKey = "hasCheckedClaudeHookConfig"
+
+    /// 首次启动时自动检查（只弹一次），没配好就提醒
+    static func checkAndWarnIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: hasCheckedKey) else { return }
+        UserDefaults.standard.set(true, forKey: hasCheckedKey)
+        performCheck()
+    }
+
+    /// 用户从菜单手动检查（每次都弹结果）
+    static func check() {
+        let configured = isHooksConfigured()
+        let alert = NSAlert()
+        alert.alertStyle = configured ? .informational : .warning
+        alert.messageText = configured ? "✅ Claude Code Hook 已配置" : "⚠️ 未检测到 Claude Code Hook 配置"
+        alert.informativeText = configured
+            ? "状态灯将自动跟随 Claude Code 的状态变化。\n\n如需调整，请编辑 ~/.claude/settings.json 中的 hooks 配置。"
+            : """
+            状态灯需要 Claude Code 的 Hook 配置才能自动变化颜色。
+
+            请在 ~/.claude/settings.json 中添加以下配置：
+
+            "hooks": {
+              "UserPromptSubmit": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl working"}]
+              }],
+              "Stop": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl idle"}]
+              }],
+              "StopFailure": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl error --message \\"执行出错\\""}]
+              }]
+            }
+
+            添加后保存并重启 Claude Code。
+            """
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
+
+    private static func performCheck() {
+        guard !isHooksConfigured() else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "检查 Claude Code 集成"
+            alert.informativeText = """
+            未检测到 Claude Code 的 Hook 配置。
+
+            状态灯已开始运行，但需要配置 Hook 才能自动跟随 Claude Code 的状态变化。
+            你可随时在右键菜单中点击「检查 Claude Code 集成」查看配置说明。
+            """
+            alert.addButton(withTitle: "知道了")
+            alert.runModal()
+        }
+    }
+
+    static func isHooksConfigured() -> Bool {
+        guard let data = try? Data(contentsOf: claudeSettingsURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] as? [String: Any] else {
+            return false
+        }
+
+        let requiredHooks: Set<String> = ["Stop", "UserPromptSubmit"]
+        let configuredHooks = Set(hooks.keys)
+        return requiredHooks.isSubset(of: configuredHooks)
     }
 }
 
