@@ -872,7 +872,7 @@ enum ClaudeCodeConfigChecker {
                 "hooks": [{"type": "command", "command": "cc-statusctl error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
               }],
               "Notification": [{
-                "matcher": "*",
+                "matcher": "permission_prompt",
                 "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
               }],
               "SessionEnd": [{
@@ -957,12 +957,13 @@ enum ClaudeCodeConfigChecker {
 
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
-        let entries: [(event: String, command: String)] = [
-            ("UserPromptSubmit", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("Stop", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("StopFailure", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
-            ("Notification", "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""),
-            ("SessionEnd", "cc-statusctl remove --session \"$CLAUDE_SESSION_ID\"")
+        // Notification 只匹配 permission_prompt（需要授权时），避免 idle_prompt 等把空闲会话误点亮。
+        let entries: [(event: String, matcher: String, command: String)] = [
+            ("UserPromptSubmit", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("Stop", "*", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("StopFailure", "*", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
+            ("Notification", "permission_prompt", "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""),
+            ("SessionEnd", "*", "cc-statusctl remove --session \"$CLAUDE_SESSION_ID\"")
         ]
 
         var added = 0
@@ -972,7 +973,7 @@ enum ClaudeCodeConfigChecker {
                 continue
             }
             groups.append([
-                "matcher": "*",
+                "matcher": entry.matcher,
                 "hooks": [["type": "command", "command": entry.command]]
             ])
             hooks[entry.event] = groups
