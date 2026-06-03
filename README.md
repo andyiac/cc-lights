@@ -1,288 +1,189 @@
 # Claude Code Status Light
 
-macOS 状态栏五色状态灯 App，通过监控本地 session 状态文件，实时显示一个或多个 Claude Code session 的当前状态。
+Claude Code Status Light is a macOS menu bar app that shows the live status of one or more Claude Code sessions as small colored lights.
 
-![状态灯颜色](./docs/status-colors.png)
+The project is built for developers who keep Claude Code running in a terminal or editor and do not want to constantly switch back just to check whether it is still working, waiting for input, idle, offline, or blocked by an error.
 
-## 状态说明
+## What it does
 
-| 灯色 | 状态值 | 含义 | 显示效果 | 说明 |
-| --- | --- | --- | --- | --- |
-| ⚪️ 灰色 | `offline` | 无会话 | 常亮 | 没有可跟踪的 Claude Code session，或 session 已退出 |
-| 🟢 绿色（闪烁） | `working` | 工作中 | 脉冲呼吸（30% ↔ 100% 透明度，1 秒周期） | Claude Code 正在自动执行任务 |
-| 🟡 黄色 | `waiting` | 等待决策 | 常亮 | Claude 需要你授权/确认/选择/输入（由 `Notification` hook 触发） |
-| 🟢 绿色 | `idle` | 空闲 | 常亮 | 有 Claude Code session，且当前空闲或上次任务完成 |
-| 🔴 红色 | `error` | 错误 | 常亮 | 这轮对话因 API 错误中断（限流、认证失败、额度、服务器错误等，由 `StopFailure` hook 触发） |
+- Shows a separate menu bar light for each tracked Claude Code session.
+- Uses color and animation to make the current session state visible at a glance.
+- Lets you hover a light to inspect session details such as title, working directory, terminal, current task, message, and update time.
+- Lets you click a light to return to the matching terminal window or tab when terminal automation is available.
+- Provides a small CLI, `cc-statusctl`, so Claude Code hooks or manual commands can update session status.
+- Stores session state locally in JSON files under the user's Application Support directory.
 
----
+## Status model
 
-## 快速开始
+| Light | State | Meaning |
+| --- | --- | --- |
+| Gray | `offline` | No tracked Claude Code session exists, or the session has exited. |
+| Pulsing green | `working` | Claude Code is actively running a task and does not need user input. |
+| Solid green, then pulsing green after 15s without a follow-up update | `waiting` | Claude Code needs user confirmation, authorization, selection, or input; details are shown in notifications, hover text, and the right-click menu. |
+| Solid green | `idle` | A session exists and is ready for the next prompt. |
+| Red | `error` | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
 
-### 1. 构建并运行
+The app can show multiple sessions at the same time. Each session gets its own light, and the right-click status summary uses this priority order: `error` > `waiting` > `working` > `idle` > `offline`.
+
+## Requirements
+
+- macOS 11 Big Sur or later
+- Swift 5.9 or later
+- Xcode Command Line Tools
+
+## Quick start
 
 ```bash
-# 编译
+# Build
 make build
 
-# 直接运行（调试模式）
+# Run the menu bar app in development
 make run
 
-# 打包为 macOS App
+# Package the macOS app and CLI into dist/
 make bundle
 
-# 安装到 /Applications（含自动打包）
+# Install the app into /Applications and the CLI into ~/bin
 make install
 ```
 
-打包后在 `dist/` 目录下会生成：
+After packaging, `dist/` contains:
 
-- `dist/Claude Code Status Light.app` — 菜单栏 App
-- `dist/cc-statusctl` — 命令行工具（也可用 `swift run cc-statusctl`）
+- `Claude Code Status Light.app` - the macOS menu bar app
+- `cc-statusctl` - the CLI used to update session status
 
-### 2. 运行 App
+The app runs as a menu bar accessory app, so it does not show a Dock icon.
 
-双击 `Claude Code Status Light.app` 或在终端运行：
+## Using the menu bar app
+
+| Action | Behavior |
+| --- | --- |
+| Left click a light | Focus the matching Claude Code terminal session when possible. |
+| Hover a light | Show session details and the latest status message. |
+| Right click a light | Open the settings and status menu. |
+| Option + left click | Open the same menu as right click. |
+
+Terminal focusing is supported for Terminal.app and iTerm2 by matching the TTY. Ghostty is matched by working directory because it does not expose TTY information in the same way.
+
+macOS automation permission is required before the app can focus another terminal application. The first click may trigger a system permission prompt.
+
+## Using the CLI
 
 ```bash
-make run
-```
-
-启动后，菜单栏会出现一个圆形状态灯（默认灰色，表示尚未检测到 Claude Code session）。App 以 **accessory** 模式运行，不会有 Dock 图标。
-
----
-
-## 使用方法
-
-### 菜单栏操作
-
-| 操作 | 行为 |
-| --- | --- |
-| **左键点击某个灯** | 直接回到该灯对应的 Claude Code 终端 session |
-| **悬停某个灯** | 显示 session 名称/目录、终端、状态、任务/消息和最后更新时间 |
-| **右键点击某个灯** | 打开设置菜单（或按住 `Option` + 左键） |
-
-#### 多 session 状态灯
-
-每个 Claude Code session 会在状态栏显示一个独立圆形灯，不显示文字。灯色表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会回到正在运行该 Claude Code session 的终端窗口/标签页：
-
-- **iTerm2 / Terminal.app**：按终端 TTY 精确定位窗口/标签页。
-- **Ghostty**：按 session 的工作目录匹配终端并 `focus`（Ghostty 未暴露 TTY）。
-  > 注意：若同一目录开了多个 session，只能定位到第一个匹配的终端。每个窗口对应不同项目目录时最准。
-
-没有 session 时会显示一个灰灯占位；右键可打开设置菜单。
-
-#### 右键菜单选项
-
-| 菜单项 | 说明 |
-| --- | --- |
-| 当前状态 | 显示最高优先级状态、session 数和任务名/消息 |
-| 重置为绿灯 (`⌘R`) | 将当前最高优先级 session 重置为 `idle` |
-| 在登录时启动 | 添加/移除 LaunchAgent 实现开机自启 |
-| 启用通知 | 切换系统通知开关（状态从工作中→等待决策 或 →错误 时推送通知） |
-| 打开 Claude Code 上下文 (`⌘O`) | 打开终端/VS Code |
-| 退出 | 退出 App（会二次确认） |
-
-### 使用 CLI 工具更新状态
-
-```bash
-# 设置状态
-cc-statusctl working --task "编译 main.go"
-cc-statusctl waiting --message "需要确认危险操作"
+# Set the current session state
+cc-statusctl working --task "Build project"
+cc-statusctl waiting --message "Approval required"
 cc-statusctl idle
-cc-statusctl offline --message "Claude Code session 已退出"
-cc-statusctl error --message "构建失败：编译器报错"
+cc-statusctl offline --message "Claude Code session exited"
+cc-statusctl error --message "API request failed"
 
-# 指定 session（推荐用于多个 Claude Code session）
-cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "cc-status"
+# Track a specific Claude Code session
+cc-statusctl working \
+  --session "$CLAUDE_SESSION_ID" \
+  --cwd "$PWD" \
+  --title "$(basename "$PWD")"
 
-# 重置为绿色（等价于 cc-statusctl idle）
+# Reset to idle
 cc-statusctl reset
 
-# 移除某个 session 的灯（session 退出时清理，避免残留）
+# Remove a session light
 cc-statusctl remove --session "$CLAUDE_SESSION_ID"
 
-# 查看所有 session 状态
+# Inspect stored status
 cc-statusctl show
-
-# 查看单个 session 状态
 cc-statusctl show --session "$CLAUDE_SESSION_ID"
-
-# 查看 session 状态目录
 cc-statusctl path
 ```
 
-**未打包时**，用 `swift run cc-statusctl` 代替：
+When running from source, use `swift run cc-statusctl` instead of `cc-statusctl`.
 
-```bash
-swift run cc-statusctl working --task "编译 main.go"
-swift run cc-statusctl waiting --message "需要确认危险操作"
-swift run cc-statusctl idle
-swift run cc-statusctl offline --message "Claude Code session 已退出"
-swift run cc-statusctl error --message "构建失败"
-swift run cc-statusctl reset
-swift run cc-statusctl show
-swift run cc-statusctl path
+### CLI options
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--message <text>` | `-m` | Extra status message, such as an error or waiting reason. |
+| `--task <name>` | `-t` | Current task name. |
+| `--session <id>` | `-s` | Session identifier. If omitted, the CLI tries Claude Code environment variables, terminal TTY, then working directory. |
+| `--cwd <path>` | | Working directory for the session. |
+| `--title <name>` | | Display title shown in hover details. |
+| `--terminal-bundle <id>` | | Terminal app bundle identifier, such as `com.googlecode.iterm2`. |
+| `--tty <tty>` | | Terminal TTY, such as `/dev/ttys001`, used to focus Terminal.app or iTerm2 sessions. |
+
+## Local status files
+
+Session state is stored in:
+
+```text
+~/Library/Application Support/ClaudeCodeStatusLight/sessions/
 ```
 
-#### CLI 选项
-
-| 选项 | 缩写 | 说明 |
-| --- | --- | --- |
-| `--message <文本>` | `-m` | 附加消息（如错误信息、等待原因） |
-| `--task <任务名>` | `-t` | 当前任务名称 |
-| `--session <ID>` | `-s` | session 标识；未提供时默认使用当前工作目录 |
-| `--cwd <路径>` |  | session 对应的工作目录 |
-| `--title <名称>` |  | session 在 hover 详情中的显示名称 |
-| `--terminal-bundle <ID>` |  | 终端 App 的 bundle identifier，如 `com.googlecode.iterm2` |
-| `--tty <TTY>` |  | 终端 TTY，如 `/dev/ttys001`，用于点击灯时回到具体窗口/标签页 |
-
-未显式传入时，`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。`TERM_PROGRAM` 支持 `iTerm.app`、`Apple_Terminal`、`vscode`、`ghostty`。在 hook 子进程里 `tty` 通常失效（stdin 是管道），此时会沿父进程链用 `ps` 找回控制终端，因此 iTerm2/Terminal 也能拿到 TTY。Ghostty 通过工作目录（`--cwd`）定位窗口，无需 TTY。
-
-### 状态文件
-
-多 session 状态文件位于 `~/Library/Application Support/ClaudeCodeStatusLight/sessions/`，每个 session 一个 JSON 文件。格式：
+Each session is represented by one JSON file:
 
 ```json
 {
-  "message" : "编译成功",
-  "sessionID" : "session-123",
-  "sessionTitle" : "cc-status",
-  "state" : "working",
-  "taskName" : "构建项目",
-  "terminalBundleIdentifier" : "com.googlecode.iterm2",
-  "terminalTTY" : "/dev/ttys001",
-  "updatedAt" : "2024-01-01T12:00:00Z",
-  "workingDirectory" : "/Users/example/Developer/cc-status"
+  "message": "Build succeeded",
+  "sessionID": "session-123",
+  "sessionTitle": "cc-status",
+  "state": "working",
+  "taskName": "Build project",
+  "terminalBundleIdentifier": "com.googlecode.iterm2",
+  "terminalTTY": "/dev/ttys001",
+  "updatedAt": "2024-01-01T12:00:00Z",
+  "workingDirectory": "/Users/example/Developer/cc-status"
 }
 ```
 
-多个进程间通过此目录共享状态：App 监控目录变更实时更新灯色，CLI 工具按 session 写入新状态。App 和 CLI 无需同时启动——可以只使用 CLI 写入状态，App 负责显示。
+The menu bar app watches this directory and updates lights in real time. The CLI writes status files, so the app and CLI communicate through local filesystem state rather than a background server.
 
-状态更新会保留已有的终端定位信息（TTY、bundle、标题），未提供时不清空。App 启动时会清理超过 24 小时未更新的残留 session（兜底被强杀/崩溃、未触发 `SessionEnd` 的情况）。`SessionEnd` 正常退出时会立即移除对应 session。
+The app removes stale sessions that have not been updated for more than 24 hours. A normal session shutdown should call `cc-statusctl remove --session "$CLAUDE_SESSION_ID"` to remove the light immediately.
 
-`idle` 和 `offline` 的区别：
+## Integrating with Claude Code
 
-- `idle` / 绿灯：Claude Code session 仍然存在，只是当前没有任务，可以继续发新任务。
-- `offline` / 灰灯：没有活跃 Claude Code session，或用户已经退出 Claude Code。
-
----
-
-## 通知
-
-App 自动推送系统通知的场景：
-
-- **工作中 → 等待决策**：Claude Code 需要你回到终端做选择
-- **任意状态 → 错误**：执行出错需要关注
-
-可在右键菜单中关闭通知。
-
----
-
-## 与 Claude Code 集成
-
-### 方案一：Claude Code Hooks（推荐）
-
-将 `cc-statusctl` 与 Claude Code 的 hook 系统结合，自动更新状态。
-
-创建 `~/.claude/hooks/` 目录和对应的 hook 脚本，示例：
+The intended setup is to call `cc-statusctl` from Claude Code hooks:
 
 ```bash
-#!/bin/bash
-# ~/.claude/hooks/on_task_start.sh  — 任务开始时
-/usr/local/bin/cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --task "$CLAUDE_TASK_NAME"
+# When a turn starts or before a tool runs
+cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
+
+# When Claude Code needs a user decision
+cc-statusctl waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "User input required"
+
+# When a turn finishes normally
+cc-statusctl idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
+
+# When an API-level failure stops the turn
+cc-statusctl error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "Request failed"
+
+# When the session exits
+cc-statusctl remove --session "$CLAUDE_SESSION_ID"
 ```
 
-```bash
-#!/bin/bash
-# ~/.claude/hooks/on_task_end.sh  — 任务完成
-/usr/local/bin/cc-statusctl idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
-```
+You can also call the CLI manually from a Claude Code session by prefixing commands with `!`.
+
+## Development
 
 ```bash
-#!/bin/bash
-# ~/.claude/hooks/on_session_end.sh  — Claude Code session 退出时（移除对应的灯，避免残留）
-/usr/local/bin/cc-statusctl remove --session "$CLAUDE_SESSION_ID"
-```
-
-```bash
-#!/bin/bash
-# ~/.claude/hooks/on_task_error.sh  — 任务出错
-/usr/local/bin/cc-statusctl error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "任务执行失败，退出码：$?"
-```
-
-```bash
-#!/bin/bash
-# ~/.claude/hooks/on_ask.sh  — 需要用户决策
-/usr/local/bin/cc-statusctl waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请确认后续操作"
-```
-
-> ⚠️ Hook 文件需要 `chmod +x` 赋予执行权限。
-> `cc-statusctl` 会尽量自动记录当前终端信息；若你的 hook 环境拿不到 TTY，可以显式追加 `--tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"` 或对应终端的 bundle identifier。
-
-### 方案二：手动调用
-
-在 Claude Code 会话中按需调用：
-
-```bash
-# 让 Claude 自己调用 CLI 更新状态
-!cc-statusctl working --task "重构用户模块"
-!cc-statusctl waiting --message "请确认接口变更"
-!cc-statusctl error --message "测试失败"
-!cc-statusctl idle
-!cc-statusctl offline --message "Claude Code session 已退出"
-
-# 多 session 时建议显式指定 session
-!cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
-```
-
-在 Claude Code 中，以 `!` 开头的命令会直接在终端执行，输出会回到对话中。
-
----
-
-## 开发
-
-```bash
-# 构建
 make build
-
-# 运行测试
 make test
-
-# 打包并安装到 /Applications（含 CLI 到 ~/bin，并自动签名）
+make run
+make bundle
 make install
-
-# 清理构建产物
 make clean
 ```
 
-### 自动化授权
+## Project structure
 
-点击状态灯回到对应终端窗口，依赖 macOS 的**自动化(TCC)授权**（App 通过 AppleScript 控制 Ghostty/iTerm2 等）。两个前提：
-
-1. Info.plist 里有 `NSAppleEventsUsageDescription`——否则系统会**静默拒绝且不弹授权框**（这是后台菜单栏 app 的常见坑）。本项目已内置。
-2. 首次点灯时弹出「Claude Code Status Light 想要控制 Ghostty」，点**允许**。之后该 app 会出现在 系统设置 → 隐私与安全性 → 自动化 中，可随时开关。
-
-`make install` 使用 ad-hoc 签名。由于 ad-hoc 的签名标识每次重新编译都会变，**重新 `make install` 后通常需要再次授权**（系统视作新身份）。日常使用安装一次后不受影响；仅频繁重建时需重新点允许。
-
-### 项目结构
-
-```
+```text
 cc-status/
 ├── Sources/
-│   ├── StatusLightCore/       # 核心库
-│   │   ├── StatusState.swift   # 状态枚举（offline/working/waiting/idle/error）
-│   │   ├── StatusPayload.swift # 状态数据模型
-│   │   └── StatusFileStore.swift # 状态文件读写
-│   ├── ClaudeCodeStatusLight/  # 菜单栏 App
-│   │   └── main.swift
-│   └── CCStatusCtl/           # CLI 工具
-│       └── main.swift
+│   ├── StatusLightCore/        # Shared state model and file store
+│   ├── ClaudeCodeStatusLight/  # macOS menu bar app
+│   └── CCStatusCtl/            # CLI tool
 ├── Tests/
 │   └── StatusLightCoreTests/
-│       └── StatusPayloadTests.swift
 ├── Resources/
 │   └── Info.plist
-├── Package.swift              # SwiftPM 配置
-├── Makefile                   # 构建/打包/安装
+├── Package.swift
+├── Makefile
 └── README.md
 ```
