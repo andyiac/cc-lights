@@ -24,5 +24,7 @@
     <true/>
     <key>NSUserNotificationUsageDescription</key>
     <string>用于在 Claude Code 等待决策或执行出错时提醒你。</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>用于在你点击状态灯时，定位并切换到对应 Claude Code session 所在的终端窗口/标签页。</string>
 </dict>
 </plist>

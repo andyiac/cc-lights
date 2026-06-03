@@ -255,17 +255,14 @@ make install
 make clean
 ```
 
-### 代码签名与自动化授权
+### 自动化授权
 
-点击状态灯回到对应终端窗口依赖 macOS 的**自动化(TCC)授权**。该授权绑定 app 的签名身份，而 ad-hoc 签名每次重新编译都会变，导致每次 `make install` 后都要重新授权。
+点击状态灯回到对应终端窗口，依赖 macOS 的**自动化(TCC)授权**（App 通过 AppleScript 控制 Ghostty/iTerm2 等）。两个前提：
 
-为避免反复授权，`make install` 会用一个稳定的自签名身份 `cc-status-codesign` 给 app 签名。首次使用先创建该证书（一次性）：
+1. Info.plist 里有 `NSAppleEventsUsageDescription`——否则系统会**静默拒绝且不弹授权框**（这是后台菜单栏 app 的常见坑）。本项目已内置。
+2. 首次点灯时弹出「Claude Code Status Light 想要控制 Ghostty」，点**允许**。之后该 app 会出现在 系统设置 → 隐私与安全性 → 自动化 中，可随时开关。
 
-```bash
-make codesign-cert   # 在登录钥匙串创建自签名代码签名证书
-```
-
-之后 `make install` 会自动签名。**首次点灯时**会弹出「Claude Code Status Light 想要控制 Ghostty/iTerm2…」授权框，点允许即可；此后跨重装都保留。证书缺失时会退回 ad-hoc 并打印提示。
+`make install` 使用 ad-hoc 签名。由于 ad-hoc 的签名标识每次重新编译都会变，**重新 `make install` 后通常需要再次授权**（系统视作新身份）。日常使用安装一次后不受影响；仅频繁重建时需重新点允许。
 
 ### 项目结构
 
