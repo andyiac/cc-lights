@@ -7,6 +7,7 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
     private var statusFileMonitor: StatusFileMonitor?
+    private var configMonitor: ClaudeCodeConfigMonitor?
     private let notificationController = NotificationController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -30,10 +31,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         statusFileMonitor = monitor
         monitor.start()
+
+        let configMonitor = ClaudeCodeConfigMonitor { [weak controller] configured in
+            controller?.updateHooksConfigured(configured)
+        }
+        self.configMonitor = configMonitor
+        configMonitor.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         statusFileMonitor?.stop()
+        configMonitor?.stop()
     }
 }
 
@@ -45,6 +53,7 @@ final class StatusBarController: NSObject {
     private var visiblePayloadsByTag: [Int: StatusPayload] = [:]
     private var workingAnimator: Timer?
     private let placeholderTag = -1
+    private var isHooksConfigured = false
 
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
@@ -213,9 +222,16 @@ final class StatusBarController: NSObject {
         notificationsItem.state = notificationController.isEnabled ? .on : .off
         menu.addItem(notificationsItem)
 
-        let configItem = NSMenuItem(title: "检查 Claude Code 集成...", action: #selector(checkClaudeConfig), keyEquivalent: "")
+        let configTitle = isHooksConfigured ? "✅ Claude Code 集成已配置..." : "⚠️ 未配置 Claude Code 集成..."
+        let configItem = NSMenuItem(title: configTitle, action: #selector(checkClaudeConfig), keyEquivalent: "")
         configItem.target = self
         menu.addItem(configItem)
+
+        if !isHooksConfigured {
+            let installItem = NSMenuItem(title: "为我自动配置 Hook", action: #selector(installClaudeHooks), keyEquivalent: "")
+            installItem.target = self
+            menu.addItem(installItem)
+        }
 
         menu.addItem(.separator())
 
@@ -288,6 +304,16 @@ final class StatusBarController: NSObject {
 
     @objc private func checkClaudeConfig() {
         ClaudeCodeConfigChecker.check()
+    }
+
+    @objc private func installClaudeHooks() {
+        ClaudeCodeConfigChecker.installHooksWithUI()
+    }
+
+    func updateHooksConfigured(_ configured: Bool) {
+        DispatchQueue.main.async {
+            self.isHooksConfigured = configured
+        }
     }
 
     @objc private func openClaudeCodeContext() {
@@ -584,6 +610,87 @@ final class StatusFileMonitor {
     }
 }
 
+/// 监听 ~/.claude 目录变化，实时反馈 hook 是否已配置（盯目录而非文件，兼容编辑器的原子替换）。
+final class ClaudeCodeConfigMonitor {
+    private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.ConfigMonitor")
+    private let onChange: (Bool) -> Void
+    private var source: DispatchSourceFileSystemObject?
+    private let directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".claude")
+
+    init(onChange: @escaping (Bool) -> Void) {
+        self.onChange = onChange
+    }
+
+    func start() {
+        queue.async {
+            self.notifyState()
+            self.startMonitoring()
+        }
+    }
+
+    func stop() {
+        queue.async {
+            self.cancelCurrentSource()
+        }
+    }
+
+    private func startMonitoring() {
+        cancelCurrentSource()
+
+        let fileDescriptor = open(directoryURL.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else {
+            queue.asyncAfter(deadline: .now() + 2.0) {
+                self.startMonitoring()
+            }
+            return
+        }
+
+        let newSource = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .delete, .rename, .revoke],
+            queue: queue
+        )
+
+        newSource.setEventHandler { [weak self] in
+            self?.handleEvent()
+        }
+        newSource.setCancelHandler {
+            close(fileDescriptor)
+        }
+
+        source = newSource
+        newSource.resume()
+    }
+
+    private func handleEvent() {
+        let events = source?.data ?? []
+        let shouldRestart = events.contains(.delete) || events.contains(.rename) || events.contains(.revoke)
+
+        if shouldRestart {
+            cancelCurrentSource()
+            queue.asyncAfter(deadline: .now() + 0.1) {
+                self.notifyState()
+                self.startMonitoring()
+            }
+        } else {
+            notifyState()
+        }
+    }
+
+    private func notifyState() {
+        let configured = ClaudeCodeConfigChecker.isHooksConfigured()
+        DispatchQueue.main.async {
+            self.onChange(configured)
+        }
+    }
+
+    private func cancelCurrentSource() {
+        source?.cancel()
+        source = nil
+    }
+}
+
 final class NotificationController {
     private let enabledKey = "notificationsEnabled"
 
@@ -766,10 +873,15 @@ enum ClaudeCodeConfigChecker {
               }]
             }
 
-            添加后保存并重启 Claude Code。
+            或在右键菜单中点击「为我自动配置 Hook」，App 会自动合并（并备份原文件）。
             """
+        if !configured {
+            alert.addButton(withTitle: "为我自动配置")
+        }
         alert.addButton(withTitle: "知道了")
-        alert.runModal()
+        if !configured, alert.runModal() == .alertFirstButtonReturn {
+            installHooksWithUI()
+        }
     }
 
     private static func performCheck() {
@@ -783,10 +895,13 @@ enum ClaudeCodeConfigChecker {
             未检测到 Claude Code 的 Hook 配置。
 
             状态灯已开始运行，但需要配置 Hook 才能自动跟随 Claude Code 的状态变化。
-            你可随时在右键菜单中点击「检查 Claude Code 集成」查看配置说明。
+            点击「为我自动配置」可把 hook 合并进 ~/.claude/settings.json（会先备份原文件），也可稍后在右键菜单中操作。
             """
-            alert.addButton(withTitle: "知道了")
-            alert.runModal()
+            alert.addButton(withTitle: "为我自动配置")
+            alert.addButton(withTitle: "稍后")
+            if alert.runModal() == .alertFirstButtonReturn {
+                installHooksWithUI()
+            }
         }
     }
 
@@ -800,6 +915,115 @@ enum ClaudeCodeConfigChecker {
         let requiredHooks: Set<String> = ["Stop", "UserPromptSubmit"]
         let configuredHooks = Set(hooks.keys)
         return requiredHooks.isSubset(of: configuredHooks)
+    }
+
+    enum ConfigError: LocalizedError {
+        case invalidSettings
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidSettings:
+                return "~/.claude/settings.json 不是合法的 JSON，请先手动修复后再试。"
+            }
+        }
+    }
+
+    /// 把状态灯 hook 安全合并进 settings.json：只追加自己的分组、不动用户已有配置、写前备份。
+    /// 返回是否真的写入了改动。
+    @discardableResult
+    static func installHooks() throws -> Bool {
+        let url = claudeSettingsURL
+        let fileManager = FileManager.default
+        let fileExists = fileManager.fileExists(atPath: url.path)
+
+        var root: [String: Any] = [:]
+        if fileExists {
+            let data = try Data(contentsOf: url)
+            if !data.isEmpty {
+                guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    throw ConfigError.invalidSettings
+                }
+                root = parsed
+            }
+        }
+
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+
+        let entries: [(event: String, command: String)] = [
+            ("UserPromptSubmit", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("Stop", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("StopFailure", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\"")
+        ]
+
+        var added = 0
+        for entry in entries {
+            var groups = hooks[entry.event] as? [[String: Any]] ?? []
+            if hasCCStatusctlCommand(in: groups) {
+                continue
+            }
+            groups.append([
+                "matcher": "*",
+                "hooks": [["type": "command", "command": entry.command]]
+            ])
+            hooks[entry.event] = groups
+            added += 1
+        }
+
+        guard added > 0 else {
+            return false
+        }
+
+        root["hooks"] = hooks
+
+        if fileExists {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let backupURL = url.deletingLastPathComponent()
+                .appendingPathComponent("settings.json.bak-\(formatter.string(from: Date()))")
+            try fileManager.copyItem(at: url, to: backupURL)
+        } else {
+            try fileManager.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
+
+        let outData = try JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try outData.write(to: url, options: .atomic)
+        return true
+    }
+
+    static func installHooksWithUI() {
+        do {
+            let didChange = try installHooks()
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = didChange ? "✅ 已写入 Claude Code Hook 配置" : "✅ Claude Code Hook 已配置"
+            alert.informativeText = didChange
+                ? "已把状态灯 hook 合并进 ~/.claude/settings.json（原文件已备份为 settings.json.bak-*）。\n\n请重启 Claude Code 使配置生效。"
+                : "无需改动，hook 已存在。"
+            alert.addButton(withTitle: "知道了")
+            alert.runModal()
+        } catch {
+            NSAlert.showError(title: "写入配置失败", message: error.localizedDescription)
+        }
+    }
+
+    private static func hasCCStatusctlCommand(in groups: [[String: Any]]) -> Bool {
+        for group in groups {
+            guard let hookList = group["hooks"] as? [[String: Any]] else {
+                continue
+            }
+            for hook in hookList {
+                if let command = hook["command"] as? String, command.contains("cc-statusctl") {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
 
