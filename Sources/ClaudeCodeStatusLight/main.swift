@@ -552,9 +552,10 @@ enum StatusIcon {
         case .offline:
             return NSColor(calibratedWhite: 142.0 / 255.0, alpha: 1.0)
         case .working:
-            return NSColor(calibratedRed: 0.0, green: 122.0 / 255.0, blue: 1.0, alpha: 1.0)
+            // 与 idle 同为绿色，靠脉冲呼吸动画区分（working 闪、idle 常亮）。
+            return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .waiting:
-            return NSColor(calibratedRed: 1.0, green: 149.0 / 255.0, blue: 0.0, alpha: 1.0)
+            return NSColor(calibratedRed: 1.0, green: 204.0 / 255.0, blue: 0.0, alpha: 1.0)
         case .idle:
             return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .error:
