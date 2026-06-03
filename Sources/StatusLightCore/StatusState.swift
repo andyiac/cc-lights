@@ -36,4 +36,19 @@ public enum StatusState: String, CaseIterable, Codable {
             return "发生错误 — 点击查看"
         }
     }
+
+    public var priority: Int {
+        switch self {
+        case .offline:
+            return 0
+        case .idle:
+            return 1
+        case .working:
+            return 2
+        case .waiting:
+            return 3
+        case .error:
+            return 4
+        }
+    }
 }

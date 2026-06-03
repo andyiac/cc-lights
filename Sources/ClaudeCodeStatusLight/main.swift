@@ -14,9 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             try StatusFileStore.ensureDirectoryExists()
-            if try StatusFileStore.read() == nil {
-                try StatusFileStore.write(StatusPayload(state: .offline))
-            }
         } catch {
             NSAlert.showError(title: "无法初始化状态文件", message: error.localizedDescription)
         }
@@ -28,8 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ClaudeCodeConfigChecker.checkAndWarnIfNeeded()
 
-        let monitor = StatusFileMonitor { [weak controller] payload in
-            controller?.apply(payload)
+        let monitor = StatusFileMonitor { [weak controller] payloads in
+            controller?.apply(payloads)
         }
         statusFileMonitor = monitor
         monitor.start()
@@ -41,29 +38,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 final class StatusBarController: NSObject {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let notificationController: NotificationController
     private var currentPayload = StatusPayload(state: .offline)
+    private var currentSessions: [StatusPayload] = []
+    private var statusItems: [NSStatusItem] = []
+    private var visiblePayloadsByTag: [Int: StatusPayload] = [:]
     private var workingAnimator: Timer?
+    private let placeholderTag = -1
 
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
         super.init()
-        configureStatusItem()
-        apply(currentPayload)
+        apply([])
     }
 
-    func apply(_ payload: StatusPayload) {
+    func apply(_ payloads: [StatusPayload]) {
         DispatchQueue.main.async {
             let previousState = self.currentPayload.state
+            let payload = StatusFileStore.aggregate(payloads)
+            self.currentSessions = payloads
             self.currentPayload = payload
 
-            if let button = self.statusItem.button {
-                button.image = StatusIcon.image(for: payload.state)
-                button.toolTip = self.tooltip(for: payload)
-            }
+            self.rebuildStatusItems()
 
-            if payload.state == .working {
+            if payloads.contains(where: { $0.state == .working }) {
                 self.startWorkingAnimation()
             } else {
                 self.stopWorkingAnimation()
@@ -92,7 +90,17 @@ final class StatusBarController: NSObject {
             let phase = (elapsed / period).truncatingRemainder(dividingBy: 1.0)
             let alpha = minAlpha + (1 - minAlpha) * CGFloat(0.5 + 0.5 * sin(phase * 2 * .pi))
             DispatchQueue.main.async {
-                self.statusItem.button?.alphaValue = alpha
+                for statusItem in self.statusItems {
+                    guard let button = statusItem.button else {
+                        continue
+                    }
+
+                    if self.visiblePayloadsByTag[button.tag]?.state == .working {
+                        button.alphaValue = alpha
+                    } else {
+                        button.alphaValue = 1.0
+                    }
+                }
             }
         }
     }
@@ -101,38 +109,71 @@ final class StatusBarController: NSObject {
         workingAnimator?.invalidate()
         workingAnimator = nil
         animationStartTime = nil
-        statusItem.button?.alphaValue = 1.0
+        statusItems.forEach { $0.button?.alphaValue = 1.0 }
     }
 
-    private func configureStatusItem() {
+    private func rebuildStatusItems() {
+        statusItems.forEach(NSStatusBar.system.removeStatusItem)
+        statusItems.removeAll()
+        visiblePayloadsByTag.removeAll()
+
+        let sortedSessions = currentSessions.sorted(by: sessionSort)
+        if sortedSessions.isEmpty {
+            let statusItem = makeStatusItem(tag: placeholderTag)
+            configure(statusItem, payload: nil)
+            statusItems.append(statusItem)
+            return
+        }
+
+        for (index, payload) in sortedSessions.enumerated() {
+            let statusItem = makeStatusItem(tag: index)
+            visiblePayloadsByTag[index] = payload
+            configure(statusItem, payload: payload)
+            statusItems.append(statusItem)
+        }
+    }
+
+    private func makeStatusItem(tag: Int) -> NSStatusItem {
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.button?.tag = tag
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusItemClicked(_:))
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        return statusItem
+    }
+
+    private func configure(_ statusItem: NSStatusItem, payload: StatusPayload?) {
         guard let button = statusItem.button else {
             return
         }
 
-        button.image = StatusIcon.image(for: .offline)
-        button.target = self
-        button.action = #selector(statusItemClicked)
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        let state = payload?.state ?? .offline
+        button.image = StatusIcon.image(for: state)
+        button.title = ""
+        button.toolTip = payload.map(tooltip(for:)) ?? "无 Claude Code session\n右键打开设置"
+        button.alphaValue = 1.0
     }
 
-    @objc private func statusItemClicked() {
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
         let shouldShowMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.option) == true
 
         if shouldShowMenu {
-            showMenu()
+            showMenu(from: sender)
+        } else if let payload = visiblePayloadsByTag[sender.tag] {
+            focusClaudeCodeContext(for: payload)
         } else {
-            handlePrimaryClick()
+            showMenu(from: sender)
         }
     }
 
-    private func showMenu() {
-        guard let button = statusItem.button else {
+    private func showMenu(from sender: NSStatusBarButton) {
+        guard let statusItem = statusItems.first(where: { $0.button === sender }) else {
             return
         }
 
         statusItem.menu = buildMenu()
-        button.performClick(nil)
+        sender.performClick(nil)
         statusItem.menu = nil
     }
 
@@ -141,6 +182,9 @@ final class StatusBarController: NSObject {
 
         let stateItem = NSMenuItem(title: "当前状态：\(currentPayload.state.displayName)", action: nil, keyEquivalent: "")
         menu.addItem(stateItem)
+
+        let countItem = NSMenuItem(title: "Sessions：\(currentSessions.count)", action: nil, keyEquivalent: "")
+        menu.addItem(countItem)
 
         if let taskName = currentPayload.taskName, !taskName.isEmpty {
             let taskItem = NSMenuItem(title: "任务：\(taskName)", action: nil, keyEquivalent: "")
@@ -156,6 +200,7 @@ final class StatusBarController: NSObject {
 
         let resetItem = NSMenuItem(title: "重置为绿灯", action: #selector(resetToIdle), keyEquivalent: "r")
         resetItem.target = self
+        resetItem.isEnabled = !currentSessions.isEmpty
         menu.addItem(resetItem)
 
         let loginItem = NSMenuItem(title: "在登录时启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
@@ -185,28 +230,42 @@ final class StatusBarController: NSObject {
         return menu
     }
 
-    private func handlePrimaryClick() {
-        switch currentPayload.state {
-        case .waiting:
-            showWaitingDecision()
-        case .error:
-            showErrorDetail()
-        case .working, .idle, .offline:
-            focusClaudeCodeContext()
-        }
-    }
-
     private func tooltip(for payload: StatusPayload) -> String {
+        var lines = [
+            payload.displayTitle,
+            "状态：\(payload.state.displayName)",
+            "更新：\(relativeTimeString(since: payload.updatedAt))"
+        ]
+
         if let taskName = payload.taskName, !taskName.isEmpty {
-            return "\(payload.state.tooltip)\n\(taskName)"
+            lines.append("任务：\(taskName)")
         }
-        return payload.state.tooltip
+
+        if let message = payload.message, !message.isEmpty {
+            lines.append("消息：\(message)")
+        }
+
+        if let workingDirectory = payload.workingDirectory, !workingDirectory.isEmpty {
+            lines.append("目录：\(workingDirectory)")
+        }
+
+        if let terminalTTY = payload.terminalTTY, !terminalTTY.isEmpty {
+            lines.append("终端：\(terminalTTY)")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     @objc private func resetToIdle() {
         do {
-            try StatusFileStore.reset()
-            apply(StatusPayload(state: .idle))
+            try StatusFileStore.reset(
+                sessionID: currentPayload.sessionID,
+                sessionTitle: currentPayload.sessionTitle,
+                workingDirectory: currentPayload.workingDirectory,
+                terminalBundleIdentifier: currentPayload.terminalBundleIdentifier,
+                terminalTTY: currentPayload.terminalTTY
+            )
+            apply(try StatusFileStore.readAllSessions())
         } catch {
             NSAlert.showError(title: "重置失败", message: error.localizedDescription)
         }
@@ -232,7 +291,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openClaudeCodeContext() {
-        focusClaudeCodeContext()
+        focusClaudeCodeContext(for: currentSessions.sorted(by: sessionSort).first)
     }
 
     @objc private func confirmQuit() {
@@ -248,59 +307,161 @@ final class StatusBarController: NSObject {
         }
     }
 
-    private func showWaitingDecision() {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Claude Code 等待你的决策"
-        alert.informativeText = currentPayload.message ?? "请回到 Claude Code 终端或 IDE 完成当前选择。"
-        alert.addButton(withTitle: "打开上下文")
-        alert.addButton(withTitle: "重置为绿灯")
-        alert.addButton(withTitle: "取消")
-
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            focusClaudeCodeContext()
-        } else if response == .alertSecondButtonReturn {
-            resetToIdle()
-        }
-    }
-
-    private func showErrorDetail() {
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = "Claude Code 执行出错"
-        alert.informativeText = currentPayload.message ?? "未提供错误详情。请回到 Claude Code 上下文查看日志。"
-        alert.addButton(withTitle: "重置为绿灯")
-        alert.addButton(withTitle: "打开上下文")
-        alert.addButton(withTitle: "保留红灯")
-
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            resetToIdle()
-        } else if response == .alertSecondButtonReturn {
-            focusClaudeCodeContext()
-        }
-    }
-
-    private func focusClaudeCodeContext() {
-        let candidateBundleIdentifiers = [
-            "com.googlecode.iterm2",
-            "com.apple.Terminal",
-            "com.microsoft.VSCode"
-        ]
-
-        for bundleIdentifier in candidateBundleIdentifiers {
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
-                continue
+    private func focusClaudeCodeContext(for payload: StatusPayload? = nil) {
+        if let payload {
+            if focusTerminalSession(for: payload) {
+                return
             }
 
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
-            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            if let terminalBundleIdentifier = payload.terminalBundleIdentifier,
+               activateApplication(bundleIdentifier: terminalBundleIdentifier) {
+                return
+            }
+
+            if activateDefaultTerminal() {
+                return
+            }
+
+            showMissingSessionContext(for: payload)
             return
         }
 
-        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory()))
+        _ = activateDefaultTerminal()
+    }
+
+    private func activateDefaultTerminal() -> Bool {
+        let candidateBundleIdentifiers = [
+            "com.googlecode.iterm2",
+            "com.apple.Terminal"
+        ]
+
+        for bundleIdentifier in candidateBundleIdentifiers {
+            if activateApplication(bundleIdentifier: bundleIdentifier) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func activateApplication(bundleIdentifier: String) -> Bool {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            return false
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        return true
+    }
+
+    private func focusTerminalSession(for payload: StatusPayload) -> Bool {
+        guard let terminalTTY = payload.terminalTTY, !terminalTTY.isEmpty else {
+            return false
+        }
+
+        switch payload.terminalBundleIdentifier {
+        case "com.googlecode.iterm2":
+            return runAppleScript(iTermFocusScript(tty: terminalTTY))
+        case "com.apple.Terminal":
+            return runAppleScript(terminalFocusScript(tty: terminalTTY))
+        default:
+            return runAppleScript(iTermFocusScript(tty: terminalTTY))
+                || runAppleScript(terminalFocusScript(tty: terminalTTY))
+        }
+    }
+
+    private func runAppleScript(_ source: String) -> Bool {
+        var error: NSDictionary?
+        guard let script = NSAppleScript(source: source) else {
+            return false
+        }
+
+        let result = script.executeAndReturnError(&error)
+        return error == nil && result.booleanValue
+    }
+
+    private func iTermFocusScript(tty: String) -> String {
+        """
+        tell application "iTerm2"
+            repeat with aWindow in windows
+                repeat with aTab in tabs of aWindow
+                    repeat with aSession in sessions of aTab
+                        if tty of aSession is "\(appleScriptEscaped(tty))" then
+                            select aSession
+                            set current tab of aWindow to aTab
+                            set index of aWindow to 1
+                            activate
+                            return true
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+        end tell
+        return false
+        """
+    }
+
+    private func terminalFocusScript(tty: String) -> String {
+        """
+        tell application "Terminal"
+            repeat with aWindow in windows
+                repeat with aTab in tabs of aWindow
+                    if tty of aTab is "\(appleScriptEscaped(tty))" then
+                        set selected tab of aWindow to aTab
+                        set index of aWindow to 1
+                        activate
+                        return true
+                    end if
+                end repeat
+            end repeat
+        end tell
+        return false
+        """
+    }
+
+    private func appleScriptEscaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func showMissingSessionContext(for payload: StatusPayload) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "无法打开 Claude Code session"
+        alert.informativeText = """
+        状态里缺少可定位的终端信息。
+
+        请让 hook 或 CLI 写入 --tty 和 --terminal-bundle，例如：
+        cc-statusctl \(payload.state.rawValue) --session "\(payload.sessionID)" --tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"
+        """
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
+
+    private func sessionSort(_ lhs: StatusPayload, _ rhs: StatusPayload) -> Bool {
+        if lhs.state.priority == rhs.state.priority {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+        return lhs.state.priority > rhs.state.priority
+    }
+
+    private func relativeTimeString(since date: Date) -> String {
+        let elapsed = max(0, Int(Date().timeIntervalSince(date)))
+        if elapsed < 10 {
+            return "刚刚"
+        }
+        if elapsed < 60 {
+            return "\(elapsed) 秒前"
+        }
+        if elapsed < 3_600 {
+            return "\(elapsed / 60) 分钟前"
+        }
+        if elapsed < 86_400 {
+            return "\(elapsed / 3_600) 小时前"
+        }
+        return "\(elapsed / 86_400) 天前"
     }
 }
 
@@ -341,17 +502,17 @@ enum StatusIcon {
 
 final class StatusFileMonitor {
     private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.StatusFileMonitor")
-    private let onChange: (StatusPayload) -> Void
+    private let onChange: ([StatusPayload]) -> Void
     private var source: DispatchSourceFileSystemObject?
 
-    init(onChange: @escaping (StatusPayload) -> Void) {
+    init(onChange: @escaping ([StatusPayload]) -> Void) {
         self.onChange = onChange
     }
 
     func start() {
         queue.async {
-            self.readLatestPayload()
-            self.startMonitoringFile()
+            self.readLatestPayloads()
+            self.startMonitoringDirectory()
         }
     }
 
@@ -361,13 +522,13 @@ final class StatusFileMonitor {
         }
     }
 
-    private func startMonitoringFile() {
+    private func startMonitoringDirectory() {
         cancelCurrentSource()
 
-        let fileDescriptor = open(StatusFileStore.statusFileURL.path, O_EVTONLY)
+        let fileDescriptor = open(StatusFileStore.sessionsDirectoryURL.path, O_EVTONLY)
         guard fileDescriptor >= 0 else {
             queue.asyncAfter(deadline: .now() + 1.0) {
-                self.startMonitoringFile()
+                self.startMonitoringDirectory()
             }
             return
         }
@@ -396,25 +557,23 @@ final class StatusFileMonitor {
         if shouldRestart {
             cancelCurrentSource()
             queue.asyncAfter(deadline: .now() + 0.05) {
-                self.readLatestPayload()
-                self.startMonitoringFile()
+                self.readLatestPayloads()
+                self.startMonitoringDirectory()
             }
         } else {
-            readLatestPayload()
+            readLatestPayloads()
         }
     }
 
-    private func readLatestPayload() {
+    private func readLatestPayloads() {
         do {
-            guard let payload = try StatusFileStore.read() else {
-                return
-            }
+            let payloads = try StatusFileStore.readAllSessions()
             DispatchQueue.main.async {
-                self.onChange(payload)
+                self.onChange(payloads)
             }
         } catch {
             DispatchQueue.main.async {
-                NSAlert.showError(title: "无法读取状态文件", message: error.localizedDescription)
+                NSAlert.showError(title: "无法读取 session 状态", message: error.localizedDescription)
             }
         }
     }
@@ -441,7 +600,7 @@ final class NotificationController {
     }
 
     func requestAuthorizationIfNeeded() {
-        guard isEnabled else {
+        guard isEnabled, isRunningFromAppBundle else {
             return
         }
 
@@ -449,7 +608,7 @@ final class NotificationController {
     }
 
     func notifyIfNeeded(from previousState: StatusState, to payload: StatusPayload) {
-        guard isEnabled else {
+        guard isEnabled, isRunningFromAppBundle else {
             return
         }
 
@@ -476,6 +635,10 @@ final class NotificationController {
         )
 
         UNUserNotificationCenter.current().add(request)
+    }
+
+    private var isRunningFromAppBundle: Bool {
+        Bundle.main.bundleURL.pathExtension == "app"
     }
 }
 
@@ -591,15 +754,15 @@ enum ClaudeCodeConfigChecker {
             "hooks": {
               "UserPromptSubmit": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl working"}]
+                "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
               "Stop": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl idle"}]
+                "hooks": [{"type": "command", "command": "cc-statusctl idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
               "StopFailure": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl error --message \\"执行出错\\""}]
+                "hooks": [{"type": "command", "command": "cc-statusctl error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
               }]
             }
 

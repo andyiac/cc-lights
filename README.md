@@ -1,6 +1,6 @@
 # Claude Code Status Light
 
-macOS 状态栏五色状态灯 App，通过监控本地状态文件，实时显示 Claude Code 当前状态。
+macOS 状态栏五色状态灯 App，通过监控本地 session 状态文件，实时显示一个或多个 Claude Code session 的当前状态。
 
 ![状态灯颜色](./docs/status-colors.png)
 
@@ -57,21 +57,22 @@ make run
 
 | 操作 | 行为 |
 | --- | --- |
-| **左键点击** | 根据当前状态执行快捷操作（见下方） |
-| **右键点击** | 打开菜单（或按住 `Option` + 左键） |
+| **左键点击某个灯** | 直接回到该灯对应的 Claude Code 终端 session |
+| **悬停某个灯** | 显示 session 名称/目录、终端、状态、任务/消息和最后更新时间 |
+| **右键点击某个灯** | 打开设置菜单（或按住 `Option` + 左键） |
 
-#### 左键点击的快捷行为
+#### 多 session 状态灯
 
-- **⚪️ 无会话 / 🔵 工作中 / 🟢 空闲**：打开终端或 VS Code（尝试按顺序打开 iTerm2 → Terminal → VS Code）
-- **🟡 等待决策**：弹出对话框，显示等待消息，可选择"打开上下文"或"重置为绿灯"
-- **🔴 错误**：弹出错误详情对话框，可选择"重置为绿灯"、"打开上下文"或"保留红灯"
+每个 Claude Code session 会在状态栏显示一个独立圆形灯，不显示文字。灯色表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会优先按终端 TTY 回到正在运行 Claude Code 的 iTerm2/Terminal 窗口或标签页。
+
+没有 session 时会显示一个灰灯占位；右键可打开设置菜单。
 
 #### 右键菜单选项
 
 | 菜单项 | 说明 |
 | --- | --- |
-| 当前状态 | 显示当前状态和任务名/消息 |
-| 重置为绿灯 (`⌘R`) | 将状态重置为 `idle` |
+| 当前状态 | 显示最高优先级状态、session 数和任务名/消息 |
+| 重置为绿灯 (`⌘R`) | 将当前最高优先级 session 重置为 `idle` |
 | 在登录时启动 | 添加/移除 LaunchAgent 实现开机自启 |
 | 启用通知 | 切换系统通知开关（状态从工作中→等待决策 或 →错误 时推送通知） |
 | 打开 Claude Code 上下文 (`⌘O`) | 打开终端/VS Code |
@@ -87,13 +88,19 @@ cc-statusctl idle
 cc-statusctl offline --message "Claude Code session 已退出"
 cc-statusctl error --message "构建失败：编译器报错"
 
+# 指定 session（推荐用于多个 Claude Code session）
+cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "cc-status"
+
 # 重置为绿色（等价于 cc-statusctl idle）
 cc-statusctl reset
 
-# 查看当前状态
+# 查看所有 session 状态
 cc-statusctl show
 
-# 查看状态文件路径
+# 查看单个 session 状态
+cc-statusctl show --session "$CLAUDE_SESSION_ID"
+
+# 查看 session 状态目录
 cc-statusctl path
 ```
 
@@ -116,21 +123,33 @@ swift run cc-statusctl path
 | --- | --- | --- |
 | `--message <文本>` | `-m` | 附加消息（如错误信息、等待原因） |
 | `--task <任务名>` | `-t` | 当前任务名称 |
+| `--session <ID>` | `-s` | session 标识；未提供时默认使用当前工作目录 |
+| `--cwd <路径>` |  | session 对应的工作目录 |
+| `--title <名称>` |  | session 在 hover 详情中的显示名称 |
+| `--terminal-bundle <ID>` |  | 终端 App 的 bundle identifier，如 `com.googlecode.iterm2` |
+| `--tty <TTY>` |  | 终端 TTY，如 `/dev/ttys001`，用于点击灯时回到具体窗口/标签页 |
+
+未显式传入时，`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。
 
 ### 状态文件
 
-状态文件位于 `~/Library/Application Support/ClaudeCodeStatusLight/status.json`，格式：
+多 session 状态文件位于 `~/Library/Application Support/ClaudeCodeStatusLight/sessions/`，每个 session 一个 JSON 文件。格式：
 
 ```json
 {
   "message" : "编译成功",
+  "sessionID" : "session-123",
+  "sessionTitle" : "cc-status",
   "state" : "working",
   "taskName" : "构建项目",
-  "updatedAt" : "2024-01-01T12:00:00Z"
+  "terminalBundleIdentifier" : "com.googlecode.iterm2",
+  "terminalTTY" : "/dev/ttys001",
+  "updatedAt" : "2024-01-01T12:00:00Z",
+  "workingDirectory" : "/Users/example/Developer/cc-status"
 }
 ```
 
-多个进程间通过此文件共享状态：App 监控文件变更实时更新灯色，CLI 工具写入新状态。App 和 CLI 无需同时启动——可以只使用 CLI 写入状态，App 负责显示。
+多个进程间通过此目录共享状态：App 监控目录变更实时更新灯色，CLI 工具按 session 写入新状态。App 和 CLI 无需同时启动——可以只使用 CLI 写入状态，App 负责显示。
 
 `idle` 和 `offline` 的区别：
 
@@ -161,34 +180,35 @@ App 自动推送系统通知的场景：
 ```bash
 #!/bin/bash
 # ~/.claude/hooks/on_task_start.sh  — 任务开始时
-/usr/local/bin/cc-statusctl working --task "$CLAUDE_TASK_NAME"
+/usr/local/bin/cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --task "$CLAUDE_TASK_NAME"
 ```
 
 ```bash
 #!/bin/bash
 # ~/.claude/hooks/on_task_end.sh  — 任务完成
-/usr/local/bin/cc-statusctl idle
+/usr/local/bin/cc-statusctl idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 ```
 
 ```bash
 #!/bin/bash
 # ~/.claude/hooks/on_session_end.sh  — Claude Code session 退出时
-/usr/local/bin/cc-statusctl offline --message "Claude Code session 已退出"
+/usr/local/bin/cc-statusctl offline --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "Claude Code session 已退出"
 ```
 
 ```bash
 #!/bin/bash
 # ~/.claude/hooks/on_task_error.sh  — 任务出错
-/usr/local/bin/cc-statusctl error --message "任务执行失败，退出码：$?"
+/usr/local/bin/cc-statusctl error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "任务执行失败，退出码：$?"
 ```
 
 ```bash
 #!/bin/bash
 # ~/.claude/hooks/on_ask.sh  — 需要用户决策
-/usr/local/bin/cc-statusctl waiting --message "请确认后续操作"
+/usr/local/bin/cc-statusctl waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请确认后续操作"
 ```
 
 > ⚠️ Hook 文件需要 `chmod +x` 赋予执行权限。
+> `cc-statusctl` 会尽量自动记录当前终端信息；若你的 hook 环境拿不到 TTY，可以显式追加 `--tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"` 或对应终端的 bundle identifier。
 
 ### 方案二：手动调用
 
@@ -201,6 +221,9 @@ App 自动推送系统通知的场景：
 !cc-statusctl error --message "测试失败"
 !cc-statusctl idle
 !cc-statusctl offline --message "Claude Code session 已退出"
+
+# 多 session 时建议显式指定 session
+!cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 ```
 
 在 Claude Code 中，以 `!` 开头的命令会直接在终端执行，输出会回到对话中。

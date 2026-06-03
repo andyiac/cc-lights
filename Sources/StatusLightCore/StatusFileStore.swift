@@ -3,6 +3,8 @@ import Foundation
 public enum StatusFileStore {
     public static let appSupportDirectoryName = "ClaudeCodeStatusLight"
     public static let statusFileName = "status.json"
+    public static let sessionsDirectoryName = "sessions"
+    public static let defaultSessionID = "default"
 
     public static var applicationSupportDirectory: URL {
         let baseDirectory = FileManager.default.urls(
@@ -16,36 +18,149 @@ public enum StatusFileStore {
         applicationSupportDirectory.appendingPathComponent(statusFileName, isDirectory: false)
     }
 
+    public static var sessionsDirectoryURL: URL {
+        applicationSupportDirectory.appendingPathComponent(sessionsDirectoryName, isDirectory: true)
+    }
+
     public static func ensureDirectoryExists() throws {
         try FileManager.default.createDirectory(
-            at: applicationSupportDirectory,
+            at: sessionsDirectoryURL,
             withIntermediateDirectories: true
         )
     }
 
     public static func read() throws -> StatusPayload? {
-        let url = statusFileURL
+        if let payload = try readSession(defaultSessionID) {
+            return payload
+        }
+
+        return try readLegacyStatusFile()
+    }
+
+    public static func readSession(_ sessionID: String) throws -> StatusPayload? {
+        let url = sessionFileURL(for: sessionID)
         guard FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
 
+        return try readPayload(at: url)
+    }
+
+    public static func readAllSessions() throws -> [StatusPayload] {
+        try ensureDirectoryExists()
+
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: sessionsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.pathExtension == "json" }
+
+        var payloads = try urls.map(readPayload(at:))
+
+        if payloads.isEmpty, let legacyPayload = try readLegacyStatusFile() {
+            payloads.append(legacyPayload)
+        }
+
+        return payloads.sorted { lhs, rhs in
+            if lhs.state.priority == rhs.state.priority {
+                return lhs.updatedAt > rhs.updatedAt
+            }
+            return lhs.state.priority > rhs.state.priority
+        }
+    }
+
+    public static func write(_ payload: StatusPayload) throws {
+        try ensureDirectoryExists()
+
+        var payload = payload
+        payload.sessionID = normalizedSessionID(payload.sessionID)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(payload)
+        try data.write(to: sessionFileURL(for: payload.sessionID), options: .atomic)
+    }
+
+    public static func reset() throws {
+        try reset(sessionID: defaultSessionID)
+    }
+
+    public static func reset(
+        sessionID: String,
+        sessionTitle: String? = nil,
+        workingDirectory: String? = nil,
+        terminalBundleIdentifier: String? = nil,
+        terminalTTY: String? = nil
+    ) throws {
+        try write(
+            StatusPayload(
+                state: .idle,
+                sessionID: normalizedSessionID(sessionID),
+                sessionTitle: sessionTitle,
+                workingDirectory: workingDirectory,
+                terminalBundleIdentifier: terminalBundleIdentifier,
+                terminalTTY: terminalTTY
+            )
+        )
+    }
+
+    public static func aggregate(_ payloads: [StatusPayload]) -> StatusPayload {
+        guard let payload = payloads.max(by: { lhs, rhs in
+            if lhs.state.priority == rhs.state.priority {
+                return lhs.updatedAt < rhs.updatedAt
+            }
+            return lhs.state.priority < rhs.state.priority
+        }) else {
+            return StatusPayload(state: .offline, sessionID: "aggregate", sessionTitle: "所有会话")
+        }
+
+        return payload
+    }
+
+    public static func sessionFileURL(for sessionID: String) -> URL {
+        sessionsDirectoryURL.appendingPathComponent("\(safeFileName(for: sessionID)).json", isDirectory: false)
+    }
+
+    public static func normalizedSessionID(_ sessionID: String) -> String {
+        let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultSessionID : trimmed
+    }
+
+    private static func readLegacyStatusFile() throws -> StatusPayload? {
+        guard FileManager.default.fileExists(atPath: statusFileURL.path) else {
+            return nil
+        }
+
+        var payload = try readPayload(at: statusFileURL)
+        payload.sessionID = normalizedSessionID(payload.sessionID)
+        return payload
+    }
+
+    private static func readPayload(at url: URL) throws -> StatusPayload {
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(StatusPayload.self, from: data)
     }
 
-    public static func write(_ payload: StatusPayload) throws {
-        try ensureDirectoryExists()
-
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(payload)
-        try data.write(to: statusFileURL, options: .atomic)
+    private static func safeFileName(for sessionID: String) -> String {
+        let normalized = normalizedSessionID(sessionID)
+        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let sanitizedScalars = normalized.unicodeScalars.map { scalar in
+            allowedCharacters.contains(scalar) ? Character(scalar) : "_"
+        }
+        let sanitized = String(sanitizedScalars).trimmingCharacters(in: CharacterSet(charactersIn: "._-"))
+        let prefix = String((sanitized.isEmpty ? defaultSessionID : sanitized).prefix(80))
+        return "\(prefix)-\(stableHash(normalized))"
     }
 
-    public static func reset() throws {
-        try write(StatusPayload(state: .idle))
+    private static func stableHash(_ value: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return String(hash, radix: 16)
     }
 }
