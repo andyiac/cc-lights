@@ -82,6 +82,54 @@ final class StatusPayloadTests: XCTestCase {
         XCTAssertFalse(try StatusFileStore.removeSession(sessionID))
     }
 
+    func testWritePreservesTerminalInfoWhenNotProvided() throws {
+        let sessionID = "test-merge-\(UUID().uuidString)"
+        let url = StatusFileStore.sessionFileURL(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // 首次写入带终端信息
+        try StatusFileStore.write(StatusPayload(
+            state: .working,
+            sessionID: sessionID,
+            sessionTitle: "我的会话",
+            terminalBundleIdentifier: "com.mitchellh.ghostty",
+            terminalTTY: "/dev/ttys009"
+        ))
+
+        // 后续更新不带终端信息（模拟 idle hook）
+        try StatusFileStore.write(StatusPayload(state: .idle, sessionID: sessionID))
+
+        let merged = try XCTUnwrap(StatusFileStore.readSession(sessionID))
+        XCTAssertEqual(merged.state, .idle)
+        XCTAssertEqual(merged.terminalTTY, "/dev/ttys009")
+        XCTAssertEqual(merged.terminalBundleIdentifier, "com.mitchellh.ghostty")
+        XCTAssertEqual(merged.sessionTitle, "我的会话")
+    }
+
+    func testPruneStaleRemovesOldSessionsOnly() throws {
+        let freshID = "test-fresh-\(UUID().uuidString)"
+        let staleID = "test-stale-\(UUID().uuidString)"
+        let freshURL = StatusFileStore.sessionFileURL(for: freshID)
+        let staleURL = StatusFileStore.sessionFileURL(for: staleID)
+        defer {
+            try? FileManager.default.removeItem(at: freshURL)
+            try? FileManager.default.removeItem(at: staleURL)
+        }
+
+        try StatusFileStore.write(StatusPayload(state: .idle, sessionID: freshID))
+        try StatusFileStore.write(StatusPayload(
+            state: .idle,
+            sessionID: staleID,
+            updatedAt: Date(timeIntervalSinceNow: -3600)
+        ))
+
+        // 清理超过 30 分钟未更新的
+        try StatusFileStore.pruneStale(olderThan: 1800)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: freshURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staleURL.path))
+    }
+
     func testAggregateUsesHighestPriorityState() {
         let payloads = [
             StatusPayload(state: .idle, sessionID: "idle"),

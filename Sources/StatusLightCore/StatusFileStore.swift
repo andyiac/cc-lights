@@ -75,6 +75,15 @@ public enum StatusFileStore {
         var payload = payload
         payload.sessionID = normalizedSessionID(payload.sessionID)
 
+        // 合并旧值：未显式提供的终端定位信息保留下来，避免每次状态更新把它们清空，
+        // 否则只在某个 hook（如 SessionStart）捕获一次的 TTY 会被随后的 working/idle 抹掉。
+        if let existing = try? readPayload(at: sessionFileURL(for: payload.sessionID)) {
+            payload.terminalTTY = payload.terminalTTY ?? existing.terminalTTY
+            payload.terminalBundleIdentifier = payload.terminalBundleIdentifier ?? existing.terminalBundleIdentifier
+            payload.sessionTitle = payload.sessionTitle ?? existing.sessionTitle
+            payload.workingDirectory = payload.workingDirectory ?? existing.workingDirectory
+        }
+
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -116,6 +125,32 @@ public enum StatusFileStore {
         }
 
         return payload
+    }
+
+    /// 清理超过 maxAge 未更新的 session 文件，兜底处理被强杀/崩溃、未触发 SessionEnd 的残留。
+    /// 返回被删除的数量。
+    @discardableResult
+    public static func pruneStale(olderThan maxAge: TimeInterval) throws -> Int {
+        try ensureDirectoryExists()
+
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: sessionsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.pathExtension == "json" }
+
+        let cutoff = Date().addingTimeInterval(-maxAge)
+        var removed = 0
+        for url in urls {
+            guard let payload = try? readPayload(at: url) else {
+                continue
+            }
+            if payload.updatedAt < cutoff {
+                try FileManager.default.removeItem(at: url)
+                removed += 1
+            }
+        }
+        return removed
     }
 
     /// 删除指定 session 的状态文件。文件不存在时静默返回（幂等）。

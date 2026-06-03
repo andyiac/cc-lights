@@ -136,7 +136,7 @@ swift run cc-statusctl path
 | `--terminal-bundle <ID>` |  | 终端 App 的 bundle identifier，如 `com.googlecode.iterm2` |
 | `--tty <TTY>` |  | 终端 TTY，如 `/dev/ttys001`，用于点击灯时回到具体窗口/标签页 |
 
-未显式传入时，`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。`TERM_PROGRAM` 支持 `iTerm.app`、`Apple_Terminal`、`vscode`、`ghostty`。Ghostty 通过工作目录（`--cwd`）定位窗口，无需 TTY。
+未显式传入时，`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。`TERM_PROGRAM` 支持 `iTerm.app`、`Apple_Terminal`、`vscode`、`ghostty`。在 hook 子进程里 `tty` 通常失效（stdin 是管道），此时会沿父进程链用 `ps` 找回控制终端，因此 iTerm2/Terminal 也能拿到 TTY。Ghostty 通过工作目录（`--cwd`）定位窗口，无需 TTY。
 
 ### 状态文件
 
@@ -157,6 +157,8 @@ swift run cc-statusctl path
 ```
 
 多个进程间通过此目录共享状态：App 监控目录变更实时更新灯色，CLI 工具按 session 写入新状态。App 和 CLI 无需同时启动——可以只使用 CLI 写入状态，App 负责显示。
+
+状态更新会保留已有的终端定位信息（TTY、bundle、标题），未提供时不清空。App 启动时会清理超过 24 小时未更新的残留 session（兜底被强杀/崩溃、未触发 `SessionEnd` 的情况）。`SessionEnd` 正常退出时会立即移除对应 session。
 
 `idle` 和 `offline` 的区别：
 

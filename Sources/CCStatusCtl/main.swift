@@ -223,6 +223,17 @@ func resolvedTerminalTTY(from parsed: ParsedCommand) -> String? {
 }
 
 func currentTTY() -> String? {
+    // 1) 交互式终端里直接 tty 有效。
+    if let tty = ttyFromCommand(), tty != "not a tty" {
+        return tty
+    }
+
+    // 2) hook 子进程的 stdin 是管道，tty 失效；控制终端会被进程链继承。
+    //    沿父进程链向上找第一个真实 tty（中间可能有脱离终端的 shell 层）。
+    return ttyFromProcessTree()
+}
+
+private func ttyFromCommand() -> String? {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/tty")
     let pipe = Pipe()
@@ -249,6 +260,56 @@ func currentTTY() -> String? {
     }
 
     return output
+}
+
+private func ttyFromProcessTree() -> String? {
+    var pid = getppid()
+    // 最多向上 8 层，避免极端情况下的无限循环。
+    for _ in 0..<8 {
+        guard pid > 1 else { break }
+        guard let (ppid, tty) = psInfo(pid: pid) else { break }
+        if let tty {
+            // ps 输出形如 "ttys003"，AppleScript 里终端的 tty 是 "/dev/ttys003"。
+            return tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+        }
+        guard let ppid, ppid != pid else { break }
+        pid = ppid
+    }
+    return nil
+}
+
+/// 读取进程的父 pid 与控制终端；tty 为 "??"/"?"（无控制终端）时返回 nil。
+private func psInfo(pid: Int32) -> (ppid: Int32?, tty: String?)? {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/ps")
+    process.arguments = ["-o", "ppid=,tty=", "-p", String(pid)]
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = Pipe()
+
+    do {
+        try process.run()
+        process.waitUntilExit()
+    } catch {
+        return nil
+    }
+
+    guard process.terminationStatus == 0 else {
+        return nil
+    }
+
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    guard let line = String(data: data, encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+        !line.isEmpty else {
+        return nil
+    }
+
+    let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+    let ppid = fields.first.flatMap { Int32($0) }
+    let ttyField = fields.count >= 2 ? String(fields[1]) : nil
+    let tty = (ttyField == "??" || ttyField == "?" || ttyField?.isEmpty == true) ? nil : ttyField
+    return (ppid, tty)
 }
 
 do {

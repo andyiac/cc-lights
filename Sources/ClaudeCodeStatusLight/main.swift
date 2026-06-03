@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             try StatusFileStore.ensureDirectoryExists()
+            // 兜底清理：被强杀/崩溃而未触发 SessionEnd 的残留 session（超过 24 小时未更新）。
+            try StatusFileStore.pruneStale(olderThan: 24 * 60 * 60)
         } catch {
             NSAlert.showError(title: "无法初始化状态文件", message: error.localizedDescription)
         }
@@ -898,6 +900,10 @@ enum ClaudeCodeConfigChecker {
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
+              "PreToolUse": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+              }],
               "Stop": [{
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
@@ -906,10 +912,16 @@ enum ClaudeCodeConfigChecker {
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
               }],
-              "Notification": [{
-                "matcher": "permission_prompt",
-                "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
-              }],
+              "Notification": [
+                {
+                  "matcher": "permission_prompt",
+                  "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
+                },
+                {
+                  "matcher": "elicitation_dialog",
+                  "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
+                }
+              ],
               "SessionEnd": [{
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl remove --session \\"$CLAUDE_SESSION_ID\\""}]
@@ -992,19 +1004,24 @@ enum ClaudeCodeConfigChecker {
 
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
-        // Notification 只匹配 permission_prompt（需要授权时），避免 idle_prompt 等把空闲会话误点亮。
+        // Notification 只匹配 permission_prompt / elicitation_dialog（需要你操作时），
+        // 避免 idle_prompt 等把空闲会话误点亮。PreToolUse 在工具执行前刷回 working，
+        // 让批准授权后橙灯回退蓝色。
+        let waitingCommand = "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""
         let entries: [(event: String, matcher: String, command: String)] = [
             ("UserPromptSubmit", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("PreToolUse", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("Stop", "*", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("StopFailure", "*", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
-            ("Notification", "permission_prompt", "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""),
+            ("Notification", "permission_prompt", waitingCommand),
+            ("Notification", "elicitation_dialog", waitingCommand),
             ("SessionEnd", "*", "cc-statusctl remove --session \"$CLAUDE_SESSION_ID\"")
         ]
 
         var added = 0
         for entry in entries {
             var groups = hooks[entry.event] as? [[String: Any]] ?? []
-            if hasCCStatusctlCommand(in: groups) {
+            if hasCCStatusctlCommand(in: groups, matcher: entry.matcher) {
                 continue
             }
             groups.append([
@@ -1058,9 +1075,10 @@ enum ClaudeCodeConfigChecker {
         }
     }
 
-    private static func hasCCStatusctlCommand(in groups: [[String: Any]]) -> Bool {
+    private static func hasCCStatusctlCommand(in groups: [[String: Any]], matcher: String) -> Bool {
         for group in groups {
-            guard let hookList = group["hooks"] as? [[String: Any]] else {
+            guard (group["matcher"] as? String) == matcher,
+                  let hookList = group["hooks"] as? [[String: Any]] else {
                 continue
             }
             for hook in hookList {
