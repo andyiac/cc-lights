@@ -118,6 +118,17 @@ public enum StatusFileStore {
         return payload
     }
 
+    /// 删除指定 session 的状态文件。文件不存在时静默返回（幂等）。
+    @discardableResult
+    public static func removeSession(_ sessionID: String) throws -> Bool {
+        let url = sessionFileURL(for: normalizedSessionID(sessionID))
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return false
+        }
+        try FileManager.default.removeItem(at: url)
+        return true
+    }
+
     public static func sessionFileURL(for sessionID: String) -> URL {
         sessionsDirectoryURL.appendingPathComponent("\(safeFileName(for: sessionID)).json", isDirectory: false)
     }

@@ -114,6 +114,7 @@ func usage() -> String {
       cc-statusctl waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
       cc-statusctl error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
       cc-statusctl reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY]
+      cc-statusctl remove [--session ID]
       cc-statusctl show [--session ID]
       cc-statusctl path [--session ID]
     """
@@ -269,6 +270,10 @@ do {
         )
         try StatusFileStore.write(payload)
         print("已更新为：\(state.displayName)（\(payload.displayTitle)）")
+    case "remove":
+        let sessionID = resolvedSessionID(from: parsed)
+        let removed = try StatusFileStore.removeSession(sessionID)
+        print(removed ? "已移除 session：\(sessionID)" : "session 不存在：\(sessionID)")
     case "reset":
         try StatusFileStore.reset(
             sessionID: resolvedSessionID(from: parsed),

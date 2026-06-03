@@ -67,6 +67,21 @@ final class StatusPayloadTests: XCTestCase {
         XCTAssertEqual(decoded.workingDirectory, directory)
     }
 
+    func testRemoveSessionDeletesFileAndIsIdempotent() throws {
+        let sessionID = "test-remove-\(UUID().uuidString)"
+        let url = StatusFileStore.sessionFileURL(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try StatusFileStore.write(StatusPayload(state: .working, sessionID: sessionID))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        XCTAssertTrue(try StatusFileStore.removeSession(sessionID))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+
+        // 再次移除应静默返回 false（幂等）
+        XCTAssertFalse(try StatusFileStore.removeSession(sessionID))
+    }
+
     func testAggregateUsesHighestPriorityState() {
         let payloads = [
             StatusPayload(state: .idle, sessionID: "idle"),

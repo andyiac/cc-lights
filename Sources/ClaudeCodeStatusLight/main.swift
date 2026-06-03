@@ -952,7 +952,8 @@ enum ClaudeCodeConfigChecker {
         let entries: [(event: String, command: String)] = [
             ("UserPromptSubmit", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("Stop", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("StopFailure", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\"")
+            ("StopFailure", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
+            ("SessionEnd", "cc-statusctl remove --session \"$CLAUDE_SESSION_ID\"")
         ]
 
         var added = 0

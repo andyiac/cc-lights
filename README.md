@@ -94,6 +94,9 @@ cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "cc-sta
 # 重置为绿色（等价于 cc-statusctl idle）
 cc-statusctl reset
 
+# 移除某个 session 的灯（session 退出时清理，避免残留）
+cc-statusctl remove --session "$CLAUDE_SESSION_ID"
+
 # 查看所有 session 状态
 cc-statusctl show
 
@@ -191,8 +194,8 @@ App 自动推送系统通知的场景：
 
 ```bash
 #!/bin/bash
-# ~/.claude/hooks/on_session_end.sh  — Claude Code session 退出时
-/usr/local/bin/cc-statusctl offline --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "Claude Code session 已退出"
+# ~/.claude/hooks/on_session_end.sh  — Claude Code session 退出时（移除对应的灯，避免残留）
+/usr/local/bin/cc-statusctl remove --session "$CLAUDE_SESSION_ID"
 ```
 
 ```bash
