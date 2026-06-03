@@ -357,6 +357,7 @@ final class StatusBarController: NSObject {
 
     private func activateDefaultTerminal() -> Bool {
         let candidateBundleIdentifiers = [
+            "com.mitchellh.ghostty",
             "com.googlecode.iterm2",
             "com.apple.Terminal"
         ]
@@ -382,6 +383,11 @@ final class StatusBarController: NSObject {
     }
 
     private func focusTerminalSession(for payload: StatusPayload) -> Bool {
+        // Ghostty 没有暴露 tty，按 working directory 匹配并 focus。
+        if payload.terminalBundleIdentifier == "com.mitchellh.ghostty" {
+            return focusGhosttySession(for: payload)
+        }
+
         guard let terminalTTY = payload.terminalTTY, !terminalTTY.isEmpty else {
             return false
         }
@@ -395,6 +401,21 @@ final class StatusBarController: NSObject {
             return runAppleScript(iTermFocusScript(tty: terminalTTY))
                 || runAppleScript(terminalFocusScript(tty: terminalTTY))
         }
+    }
+
+    /// Ghostty 按 working directory 匹配终端 surface 并 focus；命中后再激活 App 确保置于最前。
+    /// 局限：同一目录有多个 session 时只能命中第一个。
+    private func focusGhosttySession(for payload: StatusPayload) -> Bool {
+        guard let workingDirectory = payload.workingDirectory, !workingDirectory.isEmpty else {
+            return false
+        }
+
+        guard runAppleScript(ghosttyFocusScript(workingDirectory: workingDirectory)) else {
+            return false
+        }
+
+        _ = activateApplication(bundleIdentifier: "com.mitchellh.ghostty")
+        return true
     }
 
     private func runAppleScript(_ source: String) -> Bool {
@@ -440,6 +461,20 @@ final class StatusBarController: NSObject {
                         return true
                     end if
                 end repeat
+            end repeat
+        end tell
+        return false
+        """
+    }
+
+    private func ghosttyFocusScript(workingDirectory: String) -> String {
+        """
+        tell application "Ghostty"
+            repeat with aTerminal in terminals
+                if working directory of aTerminal is "\(appleScriptEscaped(workingDirectory))" then
+                    focus aTerminal
+                    return true
+                end if
             end repeat
         end tell
         return false

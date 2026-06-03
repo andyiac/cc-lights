@@ -63,7 +63,11 @@ make run
 
 #### 多 session 状态灯
 
-每个 Claude Code session 会在状态栏显示一个独立圆形灯，不显示文字。灯色表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会优先按终端 TTY 回到正在运行 Claude Code 的 iTerm2/Terminal 窗口或标签页。
+每个 Claude Code session 会在状态栏显示一个独立圆形灯，不显示文字。灯色表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会回到正在运行该 Claude Code session 的终端窗口/标签页：
+
+- **iTerm2 / Terminal.app**：按终端 TTY 精确定位窗口/标签页。
+- **Ghostty**：按 session 的工作目录匹配终端并 `focus`（Ghostty 未暴露 TTY）。
+  > 注意：若同一目录开了多个 session，只能定位到第一个匹配的终端。每个窗口对应不同项目目录时最准。
 
 没有 session 时会显示一个灰灯占位；右键可打开设置菜单。
 
@@ -132,7 +136,7 @@ swift run cc-statusctl path
 | `--terminal-bundle <ID>` |  | 终端 App 的 bundle identifier，如 `com.googlecode.iterm2` |
 | `--tty <TTY>` |  | 终端 TTY，如 `/dev/ttys001`，用于点击灯时回到具体窗口/标签页 |
 
-未显式传入时，`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。
+未显式传入时，`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。`TERM_PROGRAM` 支持 `iTerm.app`、`Apple_Terminal`、`vscode`、`ghostty`。Ghostty 通过工作目录（`--cwd`）定位窗口，无需 TTY。
 
 ### 状态文件
 

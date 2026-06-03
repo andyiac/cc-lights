@@ -202,6 +202,8 @@ func resolvedTerminalBundleIdentifier(from parsed: ParsedCommand) -> String? {
         return "com.apple.Terminal"
     case "vscode":
         return "com.microsoft.VSCode"
+    case "ghostty":
+        return "com.mitchellh.ghostty"
     default:
         return nil
     }
