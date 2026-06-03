@@ -5,8 +5,10 @@ APP_DIR := $(DIST_DIR)/$(APP_NAME).app
 CONTENTS_DIR := $(APP_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
 CLI_OUTPUT := $(DIST_DIR)/cc-statusctl
+CLI_INSTALL_DIR := $(HOME)/bin
+CLI_INSTALL_PATH := $(CLI_INSTALL_DIR)/cc-statusctl
 
-.PHONY: build test run bundle install clean
+.PHONY: build test run bundle install install-cli clean
 
 build:
 	swift build
@@ -28,7 +30,13 @@ bundle:
 	@echo "Built $(APP_DIR)"
 	@echo "Built $(CLI_OUTPUT)"
 
-install: bundle
+install-cli: bundle
+	mkdir -p "$(CLI_INSTALL_DIR)"
+	cp "$(CLI_OUTPUT)" "$(CLI_INSTALL_PATH)"
+	chmod +x "$(CLI_INSTALL_PATH)"
+	@echo "Installed $(CLI_INSTALL_PATH)"
+
+install: bundle install-cli
 	cp -R "$(APP_DIR)" /Applications/
 	@echo "Installed /Applications/$(APP_NAME).app"
 
