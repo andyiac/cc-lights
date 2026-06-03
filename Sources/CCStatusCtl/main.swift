@@ -170,7 +170,7 @@ func resolvedWorkingDirectory(from parsed: ParsedCommand) -> String {
     return FileManager.default.currentDirectoryPath
 }
 
-func resolvedSessionID(from parsed: ParsedCommand) -> String {
+func resolvedSessionID(from parsed: ParsedCommand, terminalTTY: String? = nil) -> String {
     if let sessionID = parsed.sessionID, !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return sessionID
     }
@@ -180,6 +180,10 @@ func resolvedSessionID(from parsed: ParsedCommand) -> String {
         "CLAUDE_CODE_SESSION_ID"
     ]) {
         return sessionID
+    }
+
+    if let terminalTTY, !terminalTTY.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return terminalTTY
     }
 
     return resolvedWorkingDirectory(from: parsed)
@@ -321,29 +325,31 @@ do {
             throw CommandError.unknownCommand(parsed.command)
         }
 
+        let terminalTTY = resolvedTerminalTTY(from: parsed)
         let payload = StatusPayload(
             state: state,
             message: parsed.message,
             taskName: parsed.taskName,
-            sessionID: resolvedSessionID(from: parsed),
+            sessionID: resolvedSessionID(from: parsed, terminalTTY: terminalTTY),
             sessionTitle: parsed.sessionTitle,
             workingDirectory: resolvedWorkingDirectory(from: parsed),
             terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
-            terminalTTY: resolvedTerminalTTY(from: parsed)
+            terminalTTY: terminalTTY
         )
         try StatusFileStore.write(payload)
         print("已更新为：\(state.displayName)（\(payload.displayTitle)）")
     case "remove":
-        let sessionID = resolvedSessionID(from: parsed)
+        let sessionID = resolvedSessionID(from: parsed, terminalTTY: resolvedTerminalTTY(from: parsed))
         let removed = try StatusFileStore.removeSession(sessionID)
         print(removed ? "已移除 session：\(sessionID)" : "session 不存在：\(sessionID)")
     case "reset":
+        let terminalTTY = resolvedTerminalTTY(from: parsed)
         try StatusFileStore.reset(
-            sessionID: resolvedSessionID(from: parsed),
+            sessionID: resolvedSessionID(from: parsed, terminalTTY: terminalTTY),
             sessionTitle: parsed.sessionTitle,
             workingDirectory: resolvedWorkingDirectory(from: parsed),
             terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
-            terminalTTY: resolvedTerminalTTY(from: parsed)
+            terminalTTY: terminalTTY
         )
         print("已重置为：\(StatusState.idle.displayName)")
     case "show":

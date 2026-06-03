@@ -54,6 +54,8 @@ final class StatusBarController: NSObject {
     private var statusItems: [NSStatusItem] = []
     private var visiblePayloadsByTag: [Int: StatusPayload] = [:]
     private var workingAnimator: Timer?
+    private var waitingFallbackTimer: Timer?
+    private let waitingPulseDelay: TimeInterval = 15
     private let placeholderTag = -1
     private var isHooksConfigured = false
 
@@ -72,7 +74,10 @@ final class StatusBarController: NSObject {
 
             self.rebuildStatusItems()
 
-            if payloads.contains(where: { $0.state == .working }) {
+            let now = Date()
+            self.scheduleWaitingFallback(now: now)
+
+            if payloads.contains(where: { self.shouldPulse($0, now: now) }) {
                 self.startWorkingAnimation()
             } else {
                 self.stopWorkingAnimation()
@@ -87,6 +92,43 @@ final class StatusBarController: NSObject {
     // MARK: - Working 脉冲动画
 
     private var animationStartTime: Date?
+
+    private func shouldPulse(_ payload: StatusPayload, now: Date = Date()) -> Bool {
+        switch payload.state {
+        case .working:
+            return true
+        case .waiting:
+            return now.timeIntervalSince(payload.updatedAt) >= waitingPulseDelay
+        case .offline, .idle, .error:
+            return false
+        }
+    }
+
+    private func scheduleWaitingFallback(now: Date = Date()) {
+        waitingFallbackTimer?.invalidate()
+        waitingFallbackTimer = nil
+
+        let nextDelay = currentSessions
+            .filter { $0.state == .waiting }
+            .map { waitingPulseDelay - now.timeIntervalSince($0.updatedAt) }
+            .filter { $0 > 0 }
+            .min()
+
+        guard let nextDelay else {
+            return
+        }
+
+        waitingFallbackTimer = Timer.scheduledTimer(withTimeInterval: max(nextDelay, 0.1), repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.waitingFallbackTimer = nil
+            let now = Date()
+            if self.currentSessions.contains(where: { self.shouldPulse($0, now: now) }) {
+                self.startWorkingAnimation()
+            } else {
+                self.stopWorkingAnimation()
+            }
+        }
+    }
 
     private func startWorkingAnimation() {
         guard workingAnimator == nil else { return }
@@ -106,7 +148,7 @@ final class StatusBarController: NSObject {
                         continue
                     }
 
-                    if self.visiblePayloadsByTag[button.tag]?.state == .working {
+                    if let payload = self.visiblePayloadsByTag[button.tag], self.shouldPulse(payload) {
                         button.alphaValue = alpha
                     } else {
                         button.alphaValue = 1.0
@@ -183,29 +225,24 @@ final class StatusBarController: NSObject {
             return
         }
 
-        statusItem.menu = buildMenu()
+        statusItem.menu = buildMenu(for: visiblePayloadsByTag[sender.tag])
         sender.performClick(nil)
         statusItem.menu = nil
     }
 
-    private func buildMenu() -> NSMenu {
+    private func buildMenu(for payload: StatusPayload?) -> NSMenu {
         let menu = NSMenu()
 
-        let stateItem = NSMenuItem(title: "当前状态：\(currentPayload.state.displayName)", action: nil, keyEquivalent: "")
-        menu.addItem(stateItem)
+        if let payload {
+            detailLines(for: payload).forEach { line in
+                menu.addItem(NSMenuItem(title: line, action: nil, keyEquivalent: ""))
+            }
+        } else {
+            menu.addItem(NSMenuItem(title: "无 Claude Code session", action: nil, keyEquivalent: ""))
+        }
 
         let countItem = NSMenuItem(title: "Sessions：\(currentSessions.count)", action: nil, keyEquivalent: "")
         menu.addItem(countItem)
-
-        if let taskName = currentPayload.taskName, !taskName.isEmpty {
-            let taskItem = NSMenuItem(title: "任务：\(taskName)", action: nil, keyEquivalent: "")
-            menu.addItem(taskItem)
-        }
-
-        if let message = currentPayload.message, !message.isEmpty {
-            let messageItem = NSMenuItem(title: "消息：\(message)", action: nil, keyEquivalent: "")
-            menu.addItem(messageItem)
-        }
 
         menu.addItem(.separator())
 
@@ -249,6 +286,10 @@ final class StatusBarController: NSObject {
     }
 
     private func tooltip(for payload: StatusPayload) -> String {
+        detailLines(for: payload).joined(separator: "\n")
+    }
+
+    private func detailLines(for payload: StatusPayload) -> [String] {
         var lines = [
             payload.displayTitle,
             "状态：\(payload.state.displayName)",
@@ -271,7 +312,7 @@ final class StatusBarController: NSObject {
             lines.append("终端：\(terminalTTY)")
         }
 
-        return lines.joined(separator: "\n")
+        return lines
     }
 
     @objc private func resetToIdle() {
@@ -555,7 +596,7 @@ enum StatusIcon {
             // 与 idle 同为绿色，靠脉冲呼吸动画区分（working 闪、idle 常亮）。
             return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .waiting:
-            return NSColor(calibratedRed: 1.0, green: 204.0 / 255.0, blue: 0.0, alpha: 1.0)
+            return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .idle:
             return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .error:
