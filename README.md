@@ -10,9 +10,9 @@ macOS 状态栏五色状态灯 App，通过监控本地 session 状态文件，�
 | --- | --- | --- | --- | --- |
 | ⚪️ 灰色 | `offline` | 无会话 | 常亮 | 没有可跟踪的 Claude Code session，或 session 已退出 |
 | 🔵 蓝色 | `working` | 工作中 | 脉冲呼吸（30% ↔ 100% 透明度，1 秒周期） | Claude Code 正在自动执行任务 |
-| 🟡 黄色 | `waiting` | 等待决策 | 常亮 | 需要用户做决策或确认 |
+| 🟠 橙色 | `waiting` | 等待决策 | 常亮 | Claude 需要你授权/确认/选择/输入（由 `Notification` hook 触发） |
 | 🟢 绿色 | `idle` | 空闲 | 常亮 | 有 Claude Code session，且当前空闲或上次任务完成 |
-| 🔴 红色 | `error` | 错误 | 常亮 | 执行失败或异常 |
+| 🔴 红色 | `error` | 错误 | 常亮 | 这轮对话因 API 错误中断（限流、认证失败、额度、服务器错误等，由 `StopFailure` hook 触发） |
 
 ---
 

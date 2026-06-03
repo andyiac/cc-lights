@@ -517,7 +517,7 @@ enum StatusIcon {
         case .working:
             return NSColor(calibratedRed: 0.0, green: 122.0 / 255.0, blue: 1.0, alpha: 1.0)
         case .waiting:
-            return NSColor(calibratedRed: 1.0, green: 204.0 / 255.0, blue: 0.0, alpha: 1.0)
+            return NSColor(calibratedRed: 1.0, green: 149.0 / 255.0, blue: 0.0, alpha: 1.0)
         case .idle:
             return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .error:
@@ -870,6 +870,14 @@ enum ClaudeCodeConfigChecker {
               "StopFailure": [{
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
+              }],
+              "Notification": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
+              }],
+              "SessionEnd": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl remove --session \\"$CLAUDE_SESSION_ID\\""}]
               }]
             }
 
@@ -953,6 +961,7 @@ enum ClaudeCodeConfigChecker {
             ("UserPromptSubmit", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("Stop", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("StopFailure", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
+            ("Notification", "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""),
             ("SessionEnd", "cc-statusctl remove --session \"$CLAUDE_SESSION_ID\"")
         ]
 
