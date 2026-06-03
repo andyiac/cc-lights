@@ -41,7 +41,15 @@ fi
 
 echo
 echo "Creating/updating a test session for this directory..."
-"${ctl_bin}" idle --session "$(pwd)" --cwd "$(pwd)" --title "$(basename "$(pwd)")" --message "本地调试 session"
+debug_session="$(pwd)"
+"${ctl_bin}" idle --session "${debug_session}" --cwd "$(pwd)" --title "$(basename "$(pwd)")" --message "本地调试 session"
+
+# app 退出时移除调试 session，避免残留一个灯（不能用 exec，否则 trap 不触发）
+cleanup() {
+  "${ctl_bin}" remove --session "${debug_session}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 echo
 echo "Running ClaudeCodeStatusLight..."
-exec "${bundled_app_bin}" "$@"
+"${bundled_app_bin}" "$@"
