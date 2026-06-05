@@ -8,6 +8,7 @@ The project is built for developers who keep Claude Code running in a terminal o
 
 - Shows a separate menu bar light for each tracked Claude Code session.
 - Uses red/green light cues and animation to make the current session state visible at a glance.
+- Lets you choose the default round light style or a pixel-art light style from the menu.
 - Lets you hover a light to inspect session details such as title, working directory, terminal, current task, message, and update time.
 - Lets you click a light to return to the matching terminal window or tab when terminal automation is available.
 - Provides a small CLI, `cc-statusctl`, so Claude Code hooks or manual commands can update session status.
@@ -68,6 +69,8 @@ The app runs as a menu bar accessory app, so it does not show a Dock icon.
 Terminal focusing is supported for Terminal.app and iTerm2 by matching the TTY. Ghostty is matched by working directory because it does not expose TTY information in the same way.
 
 macOS automation permission is required before the app can focus another terminal application. The first click may trigger a system permission prompt.
+
+The light style can be changed from the right-click menu. The app keeps the default round style unless you choose the pixel-art light style, and the preference is saved for future launches.
 
 ## Using the CLI
 
@@ -224,6 +227,7 @@ Claude Code Status Light 是一个 macOS 状态栏红绿灯 App。它通过监�
 
 - 每个 Claude Code session 在状态栏显示一个独立圆形灯。
 - 使用红绿灯指示和动画表达当前状态。
+- 可在菜单中切换默认圆形灯和像素风格状态灯。
 - 鼠标悬停可查看 session 名称/目录、终端、状态、任务/消息和最后更新时间。
 - 点击状态灯可回到对应的终端窗口或标签页。
 - 提供 `cc-statusctl` 命令行工具，便于 Claude Code hooks 或手动命令更新状态。
@@ -264,7 +268,7 @@ make install
 - `Claude Code Status Light.app` - 菜单栏 App
 - `cc-statusctl` - 命令行工具，也可用 `swift run cc-statusctl`
 
-启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 以 accessory 模式运行，不会显示 Dock 图标。
+启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 以 accessory 模式运行，不会显示 Dock 图标。灯样式可在右键菜单中切换为像素风格，选择会在下次启动时保留。
 
 ## 使用方法
 
@@ -294,6 +298,7 @@ make install
 | 重置为绿灯 | 将当前最高优先级 session 重置为 `idle`。 |
 | 在登录时启动 | 添加或移除 LaunchAgent，实现开机自启。 |
 | 启用通知 | 切换系统通知开关。 |
+| 灯样式 | 在默认圆形灯和像素风格状态灯之间切换。 |
 | 打开 Claude Code 上下文 | 打开终端或 VS Code。 |
 | 退出 | 退出 App，会二次确认。 |
 

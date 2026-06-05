@@ -58,6 +58,7 @@ final class StatusBarController: NSObject {
     private let waitingPulseDelay: TimeInterval = 15
     private let placeholderTag = -1
     private var isHooksConfigured = false
+    private var iconStyle = StatusLightStyle.current
 
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
@@ -186,8 +187,18 @@ final class StatusBarController: NSObject {
         }
     }
 
+    private func refreshStatusItemIcons() {
+        for statusItem in statusItems {
+            guard let button = statusItem.button else {
+                continue
+            }
+
+            configure(statusItem, payload: visiblePayloadsByTag[button.tag])
+        }
+    }
+
     private func makeStatusItem(tag: Int) -> NSStatusItem {
-        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let statusItem = NSStatusBar.system.statusItem(withLength: iconStyle.statusItemLength)
         statusItem.button?.tag = tag
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked(_:))
@@ -201,7 +212,8 @@ final class StatusBarController: NSObject {
         }
 
         let state = payload?.state ?? .offline
-        button.image = StatusIcon.image(for: state)
+        statusItem.length = iconStyle.statusItemLength
+        button.image = StatusIcon.image(for: state, style: iconStyle)
         button.title = ""
         button.toolTip = payload.map(tooltip(for:)) ?? "无 Claude Code session\n右键打开设置"
         button.alphaValue = 1.0
@@ -261,6 +273,8 @@ final class StatusBarController: NSObject {
         notificationsItem.state = notificationController.isEnabled ? .on : .off
         menu.addItem(notificationsItem)
 
+        menu.addItem(styleMenuItem())
+
         let configTitle = isHooksConfigured ? "✅ Claude Code 集成已配置..." : "⚠️ 未配置 Claude Code 集成..."
         let configItem = NSMenuItem(title: configTitle, action: #selector(checkClaudeConfig), keyEquivalent: "")
         configItem.target = self
@@ -315,6 +329,26 @@ final class StatusBarController: NSObject {
         return lines
     }
 
+    private func styleMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "灯样式", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        for style in StatusLightStyle.allCases {
+            let styleItem = NSMenuItem(
+                title: style.displayName,
+                action: #selector(selectLightStyle(_:)),
+                keyEquivalent: ""
+            )
+            styleItem.target = self
+            styleItem.representedObject = style.rawValue
+            styleItem.state = iconStyle == style ? .on : .off
+            submenu.addItem(styleItem)
+        }
+
+        item.submenu = submenu
+        return item
+    }
+
     @objc private func resetToIdle() {
         do {
             try StatusFileStore.reset(
@@ -343,6 +377,18 @@ final class StatusBarController: NSObject {
         if notificationController.isEnabled {
             notificationController.requestAuthorizationIfNeeded()
         }
+    }
+
+    @objc private func selectLightStyle(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let selectedStyle = StatusLightStyle(rawValue: rawValue),
+              selectedStyle != iconStyle else {
+            return
+        }
+
+        iconStyle = selectedStyle
+        StatusLightStyle.current = selectedStyle
+        refreshStatusItemIcons()
     }
 
     @objc private func checkClaudeConfig() {
@@ -569,8 +615,55 @@ final class StatusBarController: NSObject {
     }
 }
 
+enum StatusLightStyle: String, CaseIterable {
+    case round
+    case pixel
+
+    private static let defaultsKey = "statusLightStyle"
+
+    static var current: StatusLightStyle {
+        get {
+            guard let rawValue = UserDefaults.standard.string(forKey: defaultsKey),
+                  let style = StatusLightStyle(rawValue: rawValue) else {
+                return .round
+            }
+            return style
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey)
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .round:
+            return "圆形灯"
+        case .pixel:
+            return "像素风格"
+        }
+    }
+
+    var statusItemLength: CGFloat {
+        switch self {
+        case .round:
+            return NSStatusItem.squareLength
+        case .pixel:
+            return NSStatusItem.squareLength
+        }
+    }
+}
+
 enum StatusIcon {
-    static func image(for state: StatusState) -> NSImage {
+    static func image(for state: StatusState, style: StatusLightStyle) -> NSImage {
+        switch style {
+        case .round:
+            return roundImage(for: state)
+        case .pixel:
+            return pixelImage(for: state)
+        }
+    }
+
+    private static func roundImage(for state: StatusState) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()
 
@@ -586,6 +679,94 @@ enum StatusIcon {
         image.unlockFocus()
         image.isTemplate = false
         return image
+    }
+
+    private static func pixelImage(for state: StatusState) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+
+        let context = NSGraphicsContext.current
+        context?.shouldAntialias = false
+        context?.imageInterpolation = .none
+
+        drawPixelLamp(origin: NSPoint(x: 2, y: 2), color: pixelColor(for: state))
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    private enum LampColor {
+        case red
+        case yellow
+        case green
+        case gray
+    }
+
+    private static func pixelColor(for state: StatusState) -> NSColor {
+        switch state {
+        case .offline:
+            return lampColor(.gray)
+        case .working, .waiting, .idle:
+            return lampColor(.green)
+        case .error:
+            return lampColor(.red)
+        }
+    }
+
+    private static func drawPixelLamp(origin: NSPoint, color: NSColor) {
+        let scale: CGFloat = 2
+        let mask: [[Bool]] = [
+            [false, false, true, true, true, false, false],
+            [false, true, true, true, true, true, false],
+            [true, true, true, true, true, true, true],
+            [true, true, true, true, true, true, true],
+            [true, true, true, true, true, true, true],
+            [false, true, true, true, true, true, false],
+            [false, false, true, true, true, false, false]
+        ]
+
+        let borderColor = color.blended(withFraction: 0.25, of: .black) ?? color
+        let shadowColor = color.blended(withFraction: 0.12, of: .black) ?? color
+        let highlightColor = color.blended(withFraction: 0.7, of: .white) ?? color
+
+        for row in 0..<mask.count {
+            for column in 0..<mask[row].count where mask[row][column] {
+                let isBorder = row == 0 || row == mask.count - 1
+                    || column == 0 || column == mask[row].count - 1
+                    || !mask[row - 1][column]
+                    || !mask[row + 1][column]
+                    || !mask[row][column - 1]
+                    || !mask[row][column + 1]
+                let isShadow = row >= 5 || column >= 5
+                let isHighlight = row <= 2 && column >= 3
+                let isSpecular = (row == 1 && column == 4) || (row == 2 && column == 3)
+                let pixelColor = isBorder
+                    ? borderColor
+                    : (isSpecular ? .white : (isHighlight ? highlightColor : (isShadow ? shadowColor : color)))
+
+                pixelColor.setFill()
+                NSRect(
+                    x: origin.x + CGFloat(column) * scale,
+                    y: origin.y + CGFloat(mask.count - 1 - row) * scale,
+                    width: scale,
+                    height: scale
+                ).fill()
+            }
+        }
+    }
+
+    private static func lampColor(_ color: LampColor) -> NSColor {
+        switch color {
+        case .red:
+            return NSColor(calibratedRed: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)
+        case .yellow:
+            return NSColor(calibratedRed: 1.0, green: 230.0 / 255.0, blue: 0.0, alpha: 1.0)
+        case .green:
+            return NSColor(calibratedRed: 58.0 / 255.0, green: 244.0 / 255.0, blue: 96.0 / 255.0, alpha: 1.0)
+        case .gray:
+            return NSColor(calibratedWhite: 142.0 / 255.0, alpha: 1.0)
+        }
     }
 
     private static func color(for state: StatusState) -> NSColor {
