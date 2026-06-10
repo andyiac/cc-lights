@@ -7,7 +7,7 @@ The project is built for developers who keep Claude Code running in a terminal o
 ## What it does
 
 - Shows a separate menu bar light for each tracked Claude Code session.
-- Uses red/green light cues and animation to make the current session state visible at a glance.
+- Uses traffic-light color cues and animation to make the current session state visible at a glance.
 - Lets you choose the default round light style or a pixel-art light style from the menu.
 - Lets you hover a light to inspect session details such as title, working directory, terminal, current task, message, and update time.
 - Lets you click a light to return to the matching terminal window or tab when terminal automation is available.
@@ -20,11 +20,11 @@ The project is built for developers who keep Claude Code running in a terminal o
 | --- | --- | --- | --- |
 | Gray | `offline` | No active session | No tracked Claude Code session exists, or the session has exited. |
 | Pulsing green | `working` | Green means Claude Code is running | Claude Code is actively running a task and does not need user input. |
-| Solid green, then pulsing green after 15s without a follow-up update | `waiting` | Still green; attention is shown by notification, hover text, and menu details | Claude Code needs user confirmation, authorization, selection, or input. |
+| Solid yellow, then slow pulsing yellow after 30s without a response | `waiting` | Yellow means user attention is needed | Claude Code needs user confirmation, authorization, selection, or input. |
 | Solid green | `idle` | Green means ready | A session exists and is ready for the next prompt. |
-| Red | `error` | Red means API-level failure | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
+| Red, flashing briefly when it first turns red | `error` | Red means API-level failure | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
 
-The app intentionally uses a red/green light model instead of a separate yellow waiting light. `working`, `waiting`, and `idle` are all green states; animation and details tell them apart. Red is reserved for API-level failures, not for ordinary tool or shell command failures.
+`working` and `idle` are both green and are distinguished by breathing animation. `waiting` is yellow so it is visually separate from idle/complete, and red is reserved for API-level failures, not for ordinary tool or shell command failures.
 
 When multiple sessions are visible, each session gets its own light. The right-click status summary uses this priority order: `error` > `waiting` > `working` > `idle` > `offline`.
 
@@ -151,7 +151,7 @@ The app removes stale sessions that have not been updated for more than 24 hours
 
 The app can send system notifications when:
 
-- A session changes from `working` to `waiting`, meaning Claude Code needs a user decision.
+- A session enters `waiting`, meaning Claude Code needs a user decision.
 - A session changes to `error`, meaning the turn needs attention.
 
 Notifications can be disabled from the right-click menu.
@@ -226,7 +226,7 @@ Claude Code Status Light 是一个 macOS 状态栏红绿灯 App。它通过监�
 ## 功能概览
 
 - 每个 Claude Code session 在状态栏显示一个独立圆形灯。
-- 使用红绿灯指示和动画表达当前状态。
+- 使用交通灯颜色和动画表达当前状态。
 - 可在菜单中切换默认圆形灯和像素风格状态灯。
 - 鼠标悬停可查看 session 名称/目录、终端、状态、任务/消息和最后更新时间。
 - 点击状态灯可回到对应的终端窗口或标签页。
@@ -239,11 +239,11 @@ Claude Code Status Light 是一个 macOS 状态栏红绿灯 App。它通过监�
 | --- | --- | --- | --- |
 | 灰色 | `offline` | 无活跃会话 | 没有可跟踪的 Claude Code session，或 session 已退出。 |
 | 绿色闪烁 | `working` | 绿灯表示 Claude Code 正在运行 | Claude Code 正在自动执行任务，不需要用户干预。 |
-| 绿色常亮，15 秒没有后续更新后恢复绿色闪烁 | `waiting` | 仍然使用绿灯；需要关注的信息通过通知、hover 和右键菜单展示 | Claude Code 需要用户授权、确认、选择或输入。 |
+| 黄色常亮，30 秒未响应后黄色慢呼吸 | `waiting` | 黄灯表示需要用户注意 | Claude Code 需要用户授权、确认、选择或输入。 |
 | 绿色常亮 | `idle` | 绿灯表示可继续使用 | 有 Claude Code session，且当前空闲或上次任务已正常完成。 |
-| 红色 | `error` | 红灯表示 API 层错误 | 这一轮对话因 API 错误中断，例如限流、认证失败、额度或服务器错误。 |
+| 红色，初次变红时短暂闪烁 | `error` | 红灯表示 API 层错误 | 这一轮对话因 API 错误中断，例如限流、认证失败、额度或服务器错误。 |
 
-项目现在采用红绿灯模型，不再使用独立黄灯表示等待态。`working`、`waiting` 和 `idle` 都属于绿灯状态，通过动画、通知、hover 文案和右键菜单区分。红灯只表示 API 层错误，不表示普通 shell 命令或工具执行失败。
+`working` 与 `idle` 都是绿色，通过呼吸动画区分；`waiting` 使用黄色，避免与空闲/完成混淆。红灯只表示 API 层错误，不表示普通 shell 命令或工具执行失败。
 
 多个 session 同时存在时，每个 session 独立显示一个灯；右键菜单里的状态汇总按以下优先级展示：`error` > `waiting` > `working` > `idle` > `offline`。
 
@@ -295,7 +295,8 @@ make install
 | 菜单项 | 说明 |
 | --- | --- |
 | 当前状态 | 显示右键点击灯对应 session 的名称、状态、更新时间、任务/消息、目录/终端，以及 session 总数。 |
-| 重置为绿灯 | 将当前最高优先级 session 重置为 `idle`。 |
+| 重置此 session 为绿灯 | 将右键点击的 session 重置为 `idle`。 |
+| 清除所有错误 | 将所有红灯 session 重置为 `idle`。 |
 | 在登录时启动 | 添加或移除 LaunchAgent，实现开机自启。 |
 | 启用通知 | 切换系统通知开关。 |
 | 灯样式 | 在默认圆形灯和像素风格状态灯之间切换。 |
@@ -383,7 +384,7 @@ cc-statusctl path
 
 App 自动推送系统通知的场景：
 
-- `working` 变为 `waiting`：Claude Code 需要你回到终端做选择。
+- 进入 `waiting`：Claude Code 需要你回到终端做选择。
 - 任意状态变为 `error`：这轮对话因 API 层错误中断，需要关注。
 
 可在右键菜单中关闭通知。

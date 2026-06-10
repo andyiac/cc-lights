@@ -27,13 +27,13 @@ public enum StatusState: String, CaseIterable, Codable {
         case .offline:
             return "无 Claude Code 会话"
         case .working:
-            return "Claude Code 工作中..."
+            return "Claude Code 正在工作，无需干预"
         case .waiting:
-            return "等待你的决策 — 点击查看"
+            return "等待你的决策 — 请点击查看"
         case .idle:
-            return "空闲 — 无任务"
+            return "空闲/完成 — 可发起新任务"
         case .error:
-            return "发生错误 — 点击查看"
+            return "API 错误 — 请点击查看"
         }
     }
 

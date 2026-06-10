@@ -53,9 +53,12 @@ final class StatusBarController: NSObject {
     private var currentSessions: [StatusPayload] = []
     private var statusItems: [NSStatusItem] = []
     private var visiblePayloadsByTag: [Int: StatusPayload] = [:]
-    private var workingAnimator: Timer?
-    private var waitingFallbackTimer: Timer?
-    private let waitingPulseDelay: TimeInterval = 15
+    private var statusAnimator: Timer?
+    private var waitingTimeoutTimer: Timer?
+    private var errorFlashStartBySessionID: [String: Date] = [:]
+    private let waitingTimeoutDelay: TimeInterval = 30
+    private let errorFlashStep: TimeInterval = 0.2
+    private let errorFlashCount = 3
     private let placeholderTag = -1
     private var isHooksConfigured = false
     private var iconStyle = StatusLightStyle.current
@@ -69,20 +72,26 @@ final class StatusBarController: NSObject {
     func apply(_ payloads: [StatusPayload]) {
         DispatchQueue.main.async {
             let previousState = self.currentPayload.state
+            var previousPayloadsBySessionID: [String: StatusPayload] = [:]
+            for payload in self.currentSessions {
+                previousPayloadsBySessionID[payload.sessionID] = payload
+            }
+
             let payload = StatusFileStore.aggregate(payloads)
+            let now = Date()
+            self.updateErrorFlashes(
+                for: payloads,
+                previousPayloadsBySessionID: previousPayloadsBySessionID,
+                now: now
+            )
+
             self.currentSessions = payloads
             self.currentPayload = payload
 
             self.rebuildStatusItems()
 
-            let now = Date()
-            self.scheduleWaitingFallback(now: now)
-
-            if payloads.contains(where: { self.shouldPulse($0, now: now) }) {
-                self.startWorkingAnimation()
-            } else {
-                self.stopWorkingAnimation()
-            }
+            self.scheduleWaitingTimeout(now: now)
+            self.updateStatusAnimation(now: now)
 
             if previousState != payload.state {
                 self.notificationController.notifyIfNeeded(from: previousState, to: payload)
@@ -90,28 +99,40 @@ final class StatusBarController: NSObject {
         }
     }
 
-    // MARK: - Working 脉冲动画
+    // MARK: - 状态动画
 
     private var animationStartTime: Date?
 
-    private func shouldPulse(_ payload: StatusPayload, now: Date = Date()) -> Bool {
+    private struct AnimationConfiguration {
+        var minAlpha: CGFloat
+        var period: TimeInterval
+    }
+
+    private var errorFlashDuration: TimeInterval {
+        TimeInterval(errorFlashCount) * errorFlashStep * 2
+    }
+
+    private func animationConfiguration(for payload: StatusPayload, now: Date = Date()) -> AnimationConfiguration? {
         switch payload.state {
         case .working:
-            return true
+            return AnimationConfiguration(minAlpha: 0.3, period: 1.0)
         case .waiting:
-            return now.timeIntervalSince(payload.updatedAt) >= waitingPulseDelay
+            guard now.timeIntervalSince(payload.updatedAt) >= waitingTimeoutDelay else {
+                return nil
+            }
+            return AnimationConfiguration(minAlpha: 0.6, period: 3.0)
         case .offline, .idle, .error:
-            return false
+            return nil
         }
     }
 
-    private func scheduleWaitingFallback(now: Date = Date()) {
-        waitingFallbackTimer?.invalidate()
-        waitingFallbackTimer = nil
+    private func scheduleWaitingTimeout(now: Date = Date()) {
+        waitingTimeoutTimer?.invalidate()
+        waitingTimeoutTimer = nil
 
         let nextDelay = currentSessions
             .filter { $0.state == .waiting }
-            .map { waitingPulseDelay - now.timeIntervalSince($0.updatedAt) }
+            .map { waitingTimeoutDelay - now.timeIntervalSince($0.updatedAt) }
             .filter { $0 > 0 }
             .min()
 
@@ -119,51 +140,118 @@ final class StatusBarController: NSObject {
             return
         }
 
-        waitingFallbackTimer = Timer.scheduledTimer(withTimeInterval: max(nextDelay, 0.1), repeats: false) { [weak self] _ in
+        waitingTimeoutTimer = Timer.scheduledTimer(withTimeInterval: max(nextDelay, 0.1), repeats: false) { [weak self] _ in
             guard let self else { return }
-            self.waitingFallbackTimer = nil
+            self.waitingTimeoutTimer = nil
             let now = Date()
-            if self.currentSessions.contains(where: { self.shouldPulse($0, now: now) }) {
-                self.startWorkingAnimation()
-            } else {
-                self.stopWorkingAnimation()
-            }
+            self.refreshStatusItemIcons()
+            self.updateStatusAnimation(now: now)
         }
     }
 
-    private func startWorkingAnimation() {
-        guard workingAnimator == nil else { return }
+    private func updateStatusAnimation(now: Date = Date()) {
+        if hasActiveAnimation(now: now) {
+            startStatusAnimation()
+        } else {
+            stopStatusAnimation()
+        }
+    }
+
+    private func hasActiveAnimation(now: Date = Date()) -> Bool {
+        currentSessions.contains { animationConfiguration(for: $0, now: now) != nil }
+            || errorFlashStartBySessionID.values.contains { now.timeIntervalSince($0) < errorFlashDuration }
+    }
+
+    private func startStatusAnimation() {
+        guard statusAnimator == nil else { return }
 
         animationStartTime = Date()
-        let minAlpha: CGFloat = 0.3
-        let period: TimeInterval = 1.0
 
-        workingAnimator = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { [weak self] _ in
+        statusAnimator = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { [weak self] _ in
             guard let self = self, let startTime = self.animationStartTime else { return }
-            let elapsed = Date().timeIntervalSince(startTime)
-            let phase = (elapsed / period).truncatingRemainder(dividingBy: 1.0)
-            let alpha = minAlpha + (1 - minAlpha) * CGFloat(0.5 + 0.5 * sin(phase * 2 * .pi))
+            let now = Date()
+            let elapsed = now.timeIntervalSince(startTime)
+            var hasAnimation = false
+
             DispatchQueue.main.async {
                 for statusItem in self.statusItems {
                     guard let button = statusItem.button else {
                         continue
                     }
 
-                    if let payload = self.visiblePayloadsByTag[button.tag], self.shouldPulse(payload) {
-                        button.alphaValue = alpha
-                    } else {
+                    guard let payload = self.visiblePayloadsByTag[button.tag] else {
                         button.alphaValue = 1.0
+                        continue
                     }
+
+                    if let alpha = self.errorFlashAlpha(for: payload, now: now) {
+                        button.alphaValue = alpha
+                        hasAnimation = true
+                        continue
+                    }
+
+                    if let configuration = self.animationConfiguration(for: payload, now: now) {
+                        button.alphaValue = self.pulsingAlpha(
+                            elapsed: elapsed,
+                            configuration: configuration
+                        )
+                        hasAnimation = true
+                        continue
+                    }
+
+                    button.alphaValue = 1.0
+                }
+
+                if !hasAnimation {
+                    self.stopStatusAnimation()
                 }
             }
         }
     }
 
-    private func stopWorkingAnimation() {
-        workingAnimator?.invalidate()
-        workingAnimator = nil
+    private func stopStatusAnimation() {
+        statusAnimator?.invalidate()
+        statusAnimator = nil
         animationStartTime = nil
         statusItems.forEach { $0.button?.alphaValue = 1.0 }
+    }
+
+    private func pulsingAlpha(elapsed: TimeInterval, configuration: AnimationConfiguration) -> CGFloat {
+        let phase = (elapsed / configuration.period).truncatingRemainder(dividingBy: 1.0)
+        return configuration.minAlpha + (1 - configuration.minAlpha) * CGFloat(0.5 + 0.5 * cos(phase * 2 * .pi))
+    }
+
+    private func errorFlashAlpha(for payload: StatusPayload, now: Date) -> CGFloat? {
+        guard payload.state == .error,
+              let startTime = errorFlashStartBySessionID[payload.sessionID] else {
+            return nil
+        }
+
+        let elapsed = now.timeIntervalSince(startTime)
+        guard elapsed < errorFlashDuration else {
+            errorFlashStartBySessionID[payload.sessionID] = nil
+            return nil
+        }
+
+        let stepIndex = Int(elapsed / errorFlashStep)
+        return stepIndex.isMultiple(of: 2) ? 1.0 : 0.2
+    }
+
+    private func updateErrorFlashes(
+        for payloads: [StatusPayload],
+        previousPayloadsBySessionID: [String: StatusPayload],
+        now: Date
+    ) {
+        let activeSessionIDs = Set(payloads.map(\.sessionID))
+        errorFlashStartBySessionID = errorFlashStartBySessionID.filter { activeSessionIDs.contains($0.key) }
+
+        for payload in payloads where payload.state == .error {
+            let previousPayload = previousPayloadsBySessionID[payload.sessionID]
+            guard previousPayload?.state != .error || previousPayload?.updatedAt != payload.updatedAt else {
+                continue
+            }
+            errorFlashStartBySessionID[payload.sessionID] = now
+        }
     }
 
     private func rebuildStatusItems() {
@@ -258,10 +346,16 @@ final class StatusBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let resetItem = NSMenuItem(title: "重置为绿灯", action: #selector(resetToIdle), keyEquivalent: "r")
+        let resetItem = NSMenuItem(title: "重置此 session 为绿灯", action: #selector(resetSelectedToIdle(_:)), keyEquivalent: "r")
         resetItem.target = self
-        resetItem.isEnabled = !currentSessions.isEmpty
+        resetItem.representedObject = payload?.sessionID
+        resetItem.isEnabled = payload != nil
         menu.addItem(resetItem)
+
+        let clearErrorsItem = NSMenuItem(title: "清除所有错误", action: #selector(clearAllErrors), keyEquivalent: "")
+        clearErrorsItem.target = self
+        clearErrorsItem.isEnabled = currentSessions.contains { $0.state == .error }
+        menu.addItem(clearErrorsItem)
 
         let loginItem = NSMenuItem(title: "在登录时启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.target = self
@@ -306,7 +400,7 @@ final class StatusBarController: NSObject {
     private func detailLines(for payload: StatusPayload) -> [String] {
         var lines = [
             payload.displayTitle,
-            "状态：\(payload.state.displayName)",
+            "状态：\(displayName(for: payload))",
             "更新：\(relativeTimeString(since: payload.updatedAt))"
         ]
 
@@ -329,6 +423,15 @@ final class StatusBarController: NSObject {
         return lines
     }
 
+    private func displayName(for payload: StatusPayload) -> String {
+        if payload.state == .waiting,
+           Date().timeIntervalSince(payload.updatedAt) >= waitingTimeoutDelay {
+            return "等待决策超时"
+        }
+
+        return payload.state.displayName
+    }
+
     private func styleMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "灯样式", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -349,19 +452,40 @@ final class StatusBarController: NSObject {
         return item
     }
 
-    @objc private func resetToIdle() {
+    @objc private func resetSelectedToIdle(_ sender: NSMenuItem) {
+        guard let sessionID = sender.representedObject as? String,
+              let payload = currentSessions.first(where: { $0.sessionID == sessionID }) else {
+            NSAlert.showError(title: "重置失败", message: "无法确定要重置的 session。")
+            return
+        }
+
         do {
-            try StatusFileStore.reset(
-                sessionID: currentPayload.sessionID,
-                sessionTitle: currentPayload.sessionTitle,
-                workingDirectory: currentPayload.workingDirectory,
-                terminalBundleIdentifier: currentPayload.terminalBundleIdentifier,
-                terminalTTY: currentPayload.terminalTTY
-            )
+            try resetToIdle(payload)
             apply(try StatusFileStore.readAllSessions())
         } catch {
             NSAlert.showError(title: "重置失败", message: error.localizedDescription)
         }
+    }
+
+    @objc private func clearAllErrors() {
+        do {
+            for payload in currentSessions where payload.state == .error {
+                try resetToIdle(payload)
+            }
+            apply(try StatusFileStore.readAllSessions())
+        } catch {
+            NSAlert.showError(title: "清除错误失败", message: error.localizedDescription)
+        }
+    }
+
+    private func resetToIdle(_ payload: StatusPayload) throws {
+        try StatusFileStore.reset(
+            sessionID: payload.sessionID,
+            sessionTitle: payload.sessionTitle,
+            workingDirectory: payload.workingDirectory,
+            terminalBundleIdentifier: payload.terminalBundleIdentifier,
+            terminalTTY: payload.terminalTTY
+        )
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -707,8 +831,10 @@ enum StatusIcon {
         switch state {
         case .offline:
             return lampColor(.gray)
-        case .working, .waiting, .idle:
+        case .working, .idle:
             return lampColor(.green)
+        case .waiting:
+            return lampColor(.yellow)
         case .error:
             return lampColor(.red)
         }
@@ -759,11 +885,11 @@ enum StatusIcon {
     private static func lampColor(_ color: LampColor) -> NSColor {
         switch color {
         case .red:
-            return NSColor(calibratedRed: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)
+            return NSColor(calibratedRed: 1.0, green: 59.0 / 255.0, blue: 48.0 / 255.0, alpha: 1.0)
         case .yellow:
-            return NSColor(calibratedRed: 1.0, green: 230.0 / 255.0, blue: 0.0, alpha: 1.0)
+            return NSColor(calibratedRed: 1.0, green: 204.0 / 255.0, blue: 0.0, alpha: 1.0)
         case .green:
-            return NSColor(calibratedRed: 58.0 / 255.0, green: 244.0 / 255.0, blue: 96.0 / 255.0, alpha: 1.0)
+            return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .gray:
             return NSColor(calibratedWhite: 142.0 / 255.0, alpha: 1.0)
         }
@@ -774,10 +900,9 @@ enum StatusIcon {
         case .offline:
             return NSColor(calibratedWhite: 142.0 / 255.0, alpha: 1.0)
         case .working:
-            // 与 idle 同为绿色，靠脉冲呼吸动画区分（working 闪、idle 常亮）。
             return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .waiting:
-            return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
+            return NSColor(calibratedRed: 1.0, green: 204.0 / 255.0, blue: 0.0, alpha: 1.0)
         case .idle:
             return NSColor(calibratedRed: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0, alpha: 1.0)
         case .error:
@@ -980,9 +1105,9 @@ final class NotificationController {
         }
 
         switch (previousState, payload.state) {
-        case (.working, .waiting):
+        case (_, .waiting) where previousState != .waiting:
             send(title: "Claude Code 需要你的决定", body: payload.message ?? "请回到 Claude Code 上下文完成选择。")
-        case (_, .error):
+        case (_, .error) where previousState != .error:
             send(title: "Claude Code 执行出错", body: payload.message ?? "请查看 Claude Code 日志。")
         default:
             break
@@ -1127,6 +1252,10 @@ enum ClaudeCodeConfigChecker {
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
+              "PostToolUse": [{
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+              }],
               "Stop": [{
                 "matcher": "*",
                 "hooks": [{"type": "command", "command": "cc-statusctl idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
@@ -1229,11 +1358,12 @@ enum ClaudeCodeConfigChecker {
 
         // Notification 只匹配 permission_prompt / elicitation_dialog（需要你操作时），
         // 避免 idle_prompt 等把空闲会话误点亮。PreToolUse 在工具执行前刷回 working，
-        // 让批准授权后橙灯回退蓝色。
+        // 让批准授权后黄灯回到绿色呼吸。
         let waitingCommand = "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""
         let entries: [(event: String, matcher: String, command: String)] = [
             ("UserPromptSubmit", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("PreToolUse", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("PostToolUse", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("Stop", "*", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
             ("StopFailure", "*", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
             ("Notification", "permission_prompt", waitingCommand),
