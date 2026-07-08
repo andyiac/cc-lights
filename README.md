@@ -52,7 +52,7 @@ make install
 
 After packaging, `dist/` contains:
 
-- `Claude Code Status Light.app` - the macOS menu bar app
+- `CC Status Light.app` - the macOS menu bar app
 - `cc-statusctl` - the CLI used to update session status
 
 The app runs as a menu bar accessory app, so it does not show a Dock icon.
@@ -200,7 +200,7 @@ make clean
 
 Clicking a status light to focus Terminal.app, iTerm2, or Ghostty depends on macOS Automation (TCC) permission because the app uses AppleScript for those terminals. cmux focusing goes through the `cmux://` URL scheme instead.
 
-The bundled `Info.plist` includes `NSAppleEventsUsageDescription`; without it, macOS may silently deny automation from a background menu bar app. The first click may show a prompt asking whether Claude Code Status Light can control the terminal app.
+The bundled `Info.plist` includes `NSAppleEventsUsageDescription`; without it, macOS may silently deny automation from a background menu bar app. The first click may show a prompt asking whether CC Status Light can control the terminal app.
 
 `make install` uses ad-hoc signing. Reinstalling after rebuilding can make macOS treat the app as a new identity, so automation permission may need to be granted again.
 
@@ -271,7 +271,7 @@ make install
 
 打包后在 `dist/` 目录下会生成：
 
-- `Claude Code Status Light.app` - 菜单栏 App
+- `CC Status Light.app` - 菜单栏 App
 - `cc-statusctl` - 命令行工具，也可用 `swift run cc-statusctl`
 
 启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 以 accessory 模式运行，不会显示 Dock 图标。灯样式可在右键菜单中切换为像素风格，选择会在下次启动时保留。

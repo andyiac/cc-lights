@@ -1,4 +1,4 @@
-APP_NAME := Claude Code Status Light
+APP_NAME := CC Status Light
 EXECUTABLE := ClaudeCodeStatusLight
 DIST_DIR := dist
 APP_DIR := $(DIST_DIR)/$(APP_NAME).app
