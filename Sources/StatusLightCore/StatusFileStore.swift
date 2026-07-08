@@ -80,6 +80,9 @@ public enum StatusFileStore {
         if let existing = try? readPayload(at: sessionFileURL(for: payload.sessionID)) {
             payload.terminalTTY = payload.terminalTTY ?? existing.terminalTTY
             payload.terminalBundleIdentifier = payload.terminalBundleIdentifier ?? existing.terminalBundleIdentifier
+            payload.cmuxWorkspaceID = payload.cmuxWorkspaceID ?? existing.cmuxWorkspaceID
+            payload.cmuxSurfaceID = payload.cmuxSurfaceID ?? existing.cmuxSurfaceID
+            payload.cmuxSocketPath = payload.cmuxSocketPath ?? existing.cmuxSocketPath
             payload.sessionTitle = payload.sessionTitle ?? existing.sessionTitle
             payload.workingDirectory = payload.workingDirectory ?? existing.workingDirectory
         }
@@ -100,7 +103,10 @@ public enum StatusFileStore {
         sessionTitle: String? = nil,
         workingDirectory: String? = nil,
         terminalBundleIdentifier: String? = nil,
-        terminalTTY: String? = nil
+        terminalTTY: String? = nil,
+        cmuxWorkspaceID: String? = nil,
+        cmuxSurfaceID: String? = nil,
+        cmuxSocketPath: String? = nil
     ) throws {
         try write(
             StatusPayload(
@@ -109,7 +115,10 @@ public enum StatusFileStore {
                 sessionTitle: sessionTitle,
                 workingDirectory: workingDirectory,
                 terminalBundleIdentifier: terminalBundleIdentifier,
-                terminalTTY: terminalTTY
+                terminalTTY: terminalTTY,
+                cmuxWorkspaceID: cmuxWorkspaceID,
+                cmuxSurfaceID: cmuxSurfaceID,
+                cmuxSocketPath: cmuxSocketPath
             )
         )
     }
@@ -150,6 +159,14 @@ public enum StatusFileStore {
                 removed += 1
             }
         }
+
+        if FileManager.default.fileExists(atPath: statusFileURL.path),
+           let legacyPayload = try? readPayload(at: statusFileURL),
+           legacyPayload.updatedAt < cutoff {
+            try FileManager.default.removeItem(at: statusFileURL)
+            removed += 1
+        }
+
         return removed
     }
 

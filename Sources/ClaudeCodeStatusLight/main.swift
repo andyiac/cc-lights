@@ -60,6 +60,7 @@ final class StatusBarController: NSObject {
     private let errorFlashStep: TimeInterval = 0.2
     private let errorFlashCount = 3
     private let placeholderTag = -1
+    private let cmuxDefaultBundleIdentifier = "com.cmuxterm.app"
     private var isHooksConfigured = false
     private var iconStyle = StatusLightStyle.current
 
@@ -420,6 +421,13 @@ final class StatusBarController: NSObject {
             lines.append("终端：\(terminalTTY)")
         }
 
+        let cmuxIDs = [payload.cmuxWorkspaceID, payload.cmuxSurfaceID]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !cmuxIDs.isEmpty {
+            lines.append("cmux：\(cmuxIDs.joined(separator: " / "))")
+        }
+
         return lines
     }
 
@@ -484,7 +492,10 @@ final class StatusBarController: NSObject {
             sessionTitle: payload.sessionTitle,
             workingDirectory: payload.workingDirectory,
             terminalBundleIdentifier: payload.terminalBundleIdentifier,
-            terminalTTY: payload.terminalTTY
+            terminalTTY: payload.terminalTTY,
+            cmuxWorkspaceID: payload.cmuxWorkspaceID,
+            cmuxSurfaceID: payload.cmuxSurfaceID,
+            cmuxSocketPath: payload.cmuxSocketPath
         )
     }
 
@@ -553,11 +564,7 @@ final class StatusBarController: NSObject {
             }
 
             if let terminalBundleIdentifier = payload.terminalBundleIdentifier,
-               activateApplication(bundleIdentifier: terminalBundleIdentifier) {
-                return
-            }
-
-            if activateDefaultTerminal() {
+               activateRunningApplication(bundleIdentifier: terminalBundleIdentifier) {
                 return
             }
 
@@ -565,37 +572,37 @@ final class StatusBarController: NSObject {
             return
         }
 
-        _ = activateDefaultTerminal()
+        showMissingSessionContext(for: nil)
     }
 
-    private func activateDefaultTerminal() -> Bool {
-        let candidateBundleIdentifiers = [
-            "com.mitchellh.ghostty",
-            "com.googlecode.iterm2",
-            "com.apple.Terminal"
-        ]
-
-        for bundleIdentifier in candidateBundleIdentifiers {
-            if activateApplication(bundleIdentifier: bundleIdentifier) {
-                return true
-            }
-        }
-
-        return false
-    }
-
-    private func activateApplication(bundleIdentifier: String) -> Bool {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+    private func activateRunningApplication(bundleIdentifier: String) -> Bool {
+        guard let application = NSRunningApplication
+            .runningApplications(withBundleIdentifier: bundleIdentifier)
+            .first else {
             return false
         }
 
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        if application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) {
+            return true
+        }
+
+        return runAppleScript("""
+        tell application id "\(appleScriptEscaped(bundleIdentifier))"
+            activate
+        end tell
         return true
+        """)
+    }
+
+    private func isApplicationRunning(bundleIdentifier: String) -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty
     }
 
     private func focusTerminalSession(for payload: StatusPayload) -> Bool {
+        if isCmuxSession(payload) {
+            return focusCmuxSession(for: payload)
+        }
+
         // Ghostty 没有暴露 tty，按 working directory 匹配并 focus。
         if payload.terminalBundleIdentifier == "com.mitchellh.ghostty" {
             return focusGhosttySession(for: payload)
@@ -607,18 +614,59 @@ final class StatusBarController: NSObject {
 
         switch payload.terminalBundleIdentifier {
         case "com.googlecode.iterm2":
+            guard isApplicationRunning(bundleIdentifier: "com.googlecode.iterm2") else {
+                return false
+            }
             return runAppleScript(iTermFocusScript(tty: terminalTTY))
         case "com.apple.Terminal":
+            guard isApplicationRunning(bundleIdentifier: "com.apple.Terminal") else {
+                return false
+            }
             return runAppleScript(terminalFocusScript(tty: terminalTTY))
         default:
-            return runAppleScript(iTermFocusScript(tty: terminalTTY))
-                || runAppleScript(terminalFocusScript(tty: terminalTTY))
+            let didFocusITerm = isApplicationRunning(bundleIdentifier: "com.googlecode.iterm2")
+                && runAppleScript(iTermFocusScript(tty: terminalTTY))
+            let didFocusTerminal = isApplicationRunning(bundleIdentifier: "com.apple.Terminal")
+                && runAppleScript(terminalFocusScript(tty: terminalTTY))
+            return didFocusITerm || didFocusTerminal
         }
+    }
+
+    private func isCmuxSession(_ payload: StatusPayload) -> Bool {
+        if hasText(payload.cmuxWorkspaceID) || hasText(payload.cmuxSurfaceID) {
+            return true
+        }
+
+        return payload.terminalBundleIdentifier == cmuxDefaultBundleIdentifier
+    }
+
+    /// 用 cmux 深链接切到 session 所在 workspace/surface 并把 cmux 带到前台。
+    /// `cmux://workspace/<ws>/surface/<sfc>` 由 LaunchServices 分发，无需 socket 鉴权或额外权限。
+    private func focusCmuxSession(for payload: StatusPayload) -> Bool {
+        guard let workspaceID = nonEmpty(payload.cmuxWorkspaceID) else {
+            return false
+        }
+
+        var path = "workspace/\(workspaceID)"
+        if let surfaceID = nonEmpty(payload.cmuxSurfaceID) {
+            path += "/surface/\(surfaceID)"
+        }
+
+        guard let url = URL(string: "cmux://\(path)") else {
+            return false
+        }
+
+        NSWorkspace.shared.open(url)
+        return true
     }
 
     /// Ghostty 按 working directory 匹配终端 surface 并 focus；命中后再激活 App 确保置于最前。
     /// 局限：同一目录有多个 session 时只能命中第一个。
     private func focusGhosttySession(for payload: StatusPayload) -> Bool {
+        guard isApplicationRunning(bundleIdentifier: "com.mitchellh.ghostty") else {
+            return false
+        }
+
         guard let workingDirectory = payload.workingDirectory, !workingDirectory.isEmpty else {
             return false
         }
@@ -627,7 +675,7 @@ final class StatusBarController: NSObject {
             return false
         }
 
-        _ = activateApplication(bundleIdentifier: "com.mitchellh.ghostty")
+        _ = activateRunningApplication(bundleIdentifier: "com.mitchellh.ghostty")
         return true
     }
 
@@ -700,16 +748,34 @@ final class StatusBarController: NSObject {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    private func showMissingSessionContext(for payload: StatusPayload) {
+    private func hasText(_ value: String?) -> Bool {
+        nonEmpty(value) != nil
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func showMissingSessionContext(for payload: StatusPayload?) {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "无法打开 Claude Code session"
-        alert.informativeText = """
-        状态里缺少可定位的终端信息。
+        if let payload {
+            alert.informativeText = """
+            状态里缺少可定位的终端信息，或对应终端 App 当前没有运行。
 
-        请让 hook 或 CLI 写入 --tty 和 --terminal-bundle，例如：
-        cc-statusctl \(payload.state.rawValue) --session "\(payload.sessionID)" --tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"
-        """
+            请让 hook 或 CLI 写入当前 session 实际所在的终端信息，例如：
+            cc-statusctl \(payload.state.rawValue) --session "\(payload.sessionID)" --tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"
+
+            如果 session 在 cmux 中，请写入 --cmux-workspace 和 --cmux-surface。
+            """
+        } else {
+            alert.informativeText = "当前没有可打开的 Claude Code session。"
+        }
         alert.addButton(withTitle: "知道了")
         alert.runModal()
     }
@@ -915,6 +981,8 @@ final class StatusFileMonitor {
     private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.StatusFileMonitor")
     private let onChange: ([StatusPayload]) -> Void
     private var source: DispatchSourceFileSystemObject?
+    private var cmuxPoller: DispatchSourceTimer?
+    private var lastDeliveredPayloads: [StatusPayload]?
 
     init(onChange: @escaping ([StatusPayload]) -> Void) {
         self.onChange = onChange
@@ -924,12 +992,14 @@ final class StatusFileMonitor {
         queue.async {
             self.readLatestPayloads()
             self.startMonitoringDirectory()
+            self.startPollingCmuxSessions()
         }
     }
 
     func stop() {
         queue.async {
             self.cancelCurrentSource()
+            self.cancelCmuxPoller()
         }
     }
 
@@ -978,7 +1048,12 @@ final class StatusFileMonitor {
 
     private func readLatestPayloads() {
         do {
-            let payloads = try StatusFileStore.readAllSessions()
+            let statusPayloads = try StatusFileStore.readAllSessions()
+            let payloads = self.mergedWithCmuxClaudeSessions(statusPayloads)
+            guard payloads != lastDeliveredPayloads else {
+                return
+            }
+            lastDeliveredPayloads = payloads
             DispatchQueue.main.async {
                 self.onChange(payloads)
             }
@@ -989,9 +1064,177 @@ final class StatusFileMonitor {
         }
     }
 
+    private func mergedWithCmuxClaudeSessions(_ statusPayloads: [StatusPayload]) -> [StatusPayload] {
+        let cmuxPayloads: [StatusPayload]
+        do {
+            cmuxPayloads = try CmuxClaudeSessionStore.readPayloads()
+        } catch {
+            fputs("无法读取 cmux Claude session：\(error.localizedDescription)\n", stderr)
+            cmuxPayloads = []
+        }
+
+        guard !cmuxPayloads.isEmpty else {
+            return statusPayloads
+        }
+
+        var mergedBySessionID = Dictionary(uniqueKeysWithValues: cmuxPayloads.map { ($0.sessionID, $0) })
+        for payload in statusPayloads {
+            if var cmuxPayload = mergedBySessionID[payload.sessionID] {
+                cmuxPayload.state = payload.state
+                cmuxPayload.message = payload.message
+                cmuxPayload.taskName = payload.taskName
+                cmuxPayload.sessionTitle = payload.sessionTitle ?? cmuxPayload.sessionTitle
+                cmuxPayload.workingDirectory = payload.workingDirectory ?? cmuxPayload.workingDirectory
+                cmuxPayload.terminalBundleIdentifier = payload.terminalBundleIdentifier ?? cmuxPayload.terminalBundleIdentifier
+                cmuxPayload.terminalTTY = payload.terminalTTY ?? cmuxPayload.terminalTTY
+                cmuxPayload.cmuxWorkspaceID = payload.cmuxWorkspaceID ?? cmuxPayload.cmuxWorkspaceID
+                cmuxPayload.cmuxSurfaceID = payload.cmuxSurfaceID ?? cmuxPayload.cmuxSurfaceID
+                cmuxPayload.cmuxSocketPath = payload.cmuxSocketPath ?? cmuxPayload.cmuxSocketPath
+                cmuxPayload.updatedAt = max(payload.updatedAt, cmuxPayload.updatedAt)
+                mergedBySessionID[payload.sessionID] = cmuxPayload
+            } else {
+                mergedBySessionID[payload.sessionID] = payload
+            }
+        }
+
+        return mergedBySessionID.values.sorted { lhs, rhs in
+            if lhs.state.priority == rhs.state.priority {
+                return lhs.updatedAt > rhs.updatedAt
+            }
+            return lhs.state.priority > rhs.state.priority
+        }
+    }
+
+    private func startPollingCmuxSessions() {
+        cancelCmuxPoller()
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 2.0, repeating: 2.0)
+        timer.setEventHandler { [weak self] in
+            self?.readLatestPayloads()
+        }
+        cmuxPoller = timer
+        timer.resume()
+    }
+
     private func cancelCurrentSource() {
         source?.cancel()
         source = nil
+    }
+
+    private func cancelCmuxPoller() {
+        cmuxPoller?.cancel()
+        cmuxPoller = nil
+    }
+}
+
+enum CmuxClaudeSessionStore {
+    private static let cmuxBundleIdentifier = "com.cmuxterm.app"
+
+    private struct Root: Decodable {
+        var sessions: [String: Session]
+    }
+
+    private struct Session: Decodable {
+        var agentLifecycle: String?
+        var cwd: String?
+        var pid: Int32?
+        var sessionId: String?
+        var startedAt: Double?
+        var surfaceId: String?
+        var updatedAt: Double?
+        var workspaceId: String?
+    }
+
+    static var sessionsURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cmuxterm", isDirectory: true)
+            .appendingPathComponent("claude-hook-sessions.json", isDirectory: false)
+    }
+
+    static func readPayloads() throws -> [StatusPayload] {
+        guard FileManager.default.fileExists(atPath: sessionsURL.path) else {
+            return []
+        }
+
+        let data = try Data(contentsOf: sessionsURL)
+        let root = try JSONDecoder().decode(Root.self, from: data)
+
+        return root.sessions.values.compactMap(payload(for:))
+    }
+
+    private static func payload(for session: Session) -> StatusPayload? {
+        guard let sessionID = nonEmpty(session.sessionId),
+              let workspaceID = nonEmpty(session.workspaceId),
+              let surfaceID = nonEmpty(session.surfaceId) else {
+            return nil
+        }
+
+        if let pid = session.pid, !processIsRunning(pid: pid) {
+            return nil
+        }
+
+        let workingDirectory = nonEmpty(session.cwd)
+        return StatusPayload(
+            state: state(for: session.agentLifecycle),
+            sessionID: sessionID,
+            sessionTitle: workingDirectory.map { URL(fileURLWithPath: $0).lastPathComponent },
+            workingDirectory: workingDirectory,
+            terminalBundleIdentifier: cmuxBundleIdentifier,
+            cmuxWorkspaceID: workspaceID,
+            cmuxSurfaceID: surfaceID,
+            cmuxSocketPath: cmuxSocketPath(),
+            updatedAt: date(from: session.updatedAt ?? session.startedAt)
+        )
+    }
+
+    private static func cmuxSocketPath() -> String? {
+        if let socketPath = nonEmpty(ProcessInfo.processInfo.environment["CMUX_SOCKET_PATH"]) {
+            return socketPath
+        }
+
+        let candidateURLs = [
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".local", isDirectory: true)
+                .appendingPathComponent("state", isDirectory: true)
+                .appendingPathComponent("cmux", isDirectory: true)
+                .appendingPathComponent("cmux.sock", isDirectory: false),
+            URL(fileURLWithPath: "/tmp/cmux.sock")
+        ]
+
+        return candidateURLs.first { FileManager.default.fileExists(atPath: $0.path) }?.path
+    }
+
+    private static func state(for lifecycle: String?) -> StatusState {
+        switch lifecycle?.lowercased() {
+        case "working", "running", "busy":
+            return .working
+        case "waiting", "blocked", "permission":
+            return .waiting
+        case "error", "failed", "failure":
+            return .error
+        default:
+            return .idle
+        }
+    }
+
+    private static func processIsRunning(pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    private static func date(from timestamp: Double?) -> Date {
+        guard let timestamp else {
+            return Date()
+        }
+        return Date(timeIntervalSince1970: timestamp)
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 }
 

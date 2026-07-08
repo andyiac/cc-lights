@@ -27,6 +27,9 @@ struct ParsedCommand {
     var workingDirectory: String?
     var terminalBundleIdentifier: String?
     var terminalTTY: String?
+    var cmuxWorkspaceID: String?
+    var cmuxSurfaceID: String?
+    var cmuxSocketPath: String?
 }
 
 func parse(arguments: [String]) throws -> ParsedCommand {
@@ -41,6 +44,9 @@ func parse(arguments: [String]) throws -> ParsedCommand {
     var workingDirectory: String?
     var terminalBundleIdentifier: String?
     var terminalTTY: String?
+    var cmuxWorkspaceID: String?
+    var cmuxSurfaceID: String?
+    var cmuxSocketPath: String?
     var index = 1
 
     while index < arguments.count {
@@ -88,6 +94,24 @@ func parse(arguments: [String]) throws -> ParsedCommand {
             }
             terminalTTY = arguments[index + 1]
             index += 2
+        case "--cmux-workspace":
+            guard index + 1 < arguments.count else {
+                throw CommandError.missingValue(argument)
+            }
+            cmuxWorkspaceID = arguments[index + 1]
+            index += 2
+        case "--cmux-surface":
+            guard index + 1 < arguments.count else {
+                throw CommandError.missingValue(argument)
+            }
+            cmuxSurfaceID = arguments[index + 1]
+            index += 2
+        case "--cmux-socket":
+            guard index + 1 < arguments.count else {
+                throw CommandError.missingValue(argument)
+            }
+            cmuxSocketPath = arguments[index + 1]
+            index += 2
         default:
             throw CommandError.unknownCommand(argument)
         }
@@ -101,19 +125,22 @@ func parse(arguments: [String]) throws -> ParsedCommand {
         sessionTitle: sessionTitle,
         workingDirectory: workingDirectory,
         terminalBundleIdentifier: terminalBundleIdentifier,
-        terminalTTY: terminalTTY
+        terminalTTY: terminalTTY,
+        cmuxWorkspaceID: cmuxWorkspaceID,
+        cmuxSurfaceID: cmuxSurfaceID,
+        cmuxSocketPath: cmuxSocketPath
     )
 }
 
 func usage() -> String {
     """
     用法:
-      cc-statusctl idle [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
-      cc-statusctl offline [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
-      cc-statusctl working [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
-      cc-statusctl waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
-      cc-statusctl error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--message 文本] [--task 任务名]
-      cc-statusctl reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY]
+      cc-statusctl idle [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-statusctl offline [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-statusctl working [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-statusctl waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-statusctl error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-statusctl reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径]
       cc-statusctl remove [--session ID]
       cc-statusctl show [--session ID]
       cc-statusctl path [--session ID]
@@ -195,6 +222,14 @@ func resolvedTerminalBundleIdentifier(from parsed: ParsedCommand) -> String? {
         return terminalBundleIdentifier
     }
 
+    if let cmuxBundleID = firstEnvironmentValue(for: ["CMUX_BUNDLE_ID"]) {
+        return cmuxBundleID
+    }
+
+    if resolvedCmuxWorkspaceID(from: parsed) != nil || resolvedCmuxSurfaceID(from: parsed) != nil {
+        return "com.cmuxterm.app"
+    }
+
     guard let termProgram = firstEnvironmentValue(for: ["TERM_PROGRAM"]) else {
         return nil
     }
@@ -224,6 +259,33 @@ func resolvedTerminalTTY(from parsed: ParsedCommand) -> String? {
     }
 
     return currentTTY()
+}
+
+func resolvedCmuxWorkspaceID(from parsed: ParsedCommand) -> String? {
+    if let cmuxWorkspaceID = parsed.cmuxWorkspaceID?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !cmuxWorkspaceID.isEmpty {
+        return cmuxWorkspaceID
+    }
+
+    return firstEnvironmentValue(for: ["CMUX_WORKSPACE_ID", "CMUX_TAB_ID"])
+}
+
+func resolvedCmuxSurfaceID(from parsed: ParsedCommand) -> String? {
+    if let cmuxSurfaceID = parsed.cmuxSurfaceID?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !cmuxSurfaceID.isEmpty {
+        return cmuxSurfaceID
+    }
+
+    return firstEnvironmentValue(for: ["CMUX_SURFACE_ID", "CMUX_PANEL_ID"])
+}
+
+func resolvedCmuxSocketPath(from parsed: ParsedCommand) -> String? {
+    if let cmuxSocketPath = parsed.cmuxSocketPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !cmuxSocketPath.isEmpty {
+        return cmuxSocketPath
+    }
+
+    return firstEnvironmentValue(for: ["CMUX_SOCKET_PATH"])
 }
 
 func currentTTY() -> String? {
@@ -334,7 +396,10 @@ do {
             sessionTitle: parsed.sessionTitle,
             workingDirectory: resolvedWorkingDirectory(from: parsed),
             terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
-            terminalTTY: terminalTTY
+            terminalTTY: terminalTTY,
+            cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: parsed),
+            cmuxSurfaceID: resolvedCmuxSurfaceID(from: parsed),
+            cmuxSocketPath: resolvedCmuxSocketPath(from: parsed)
         )
         try StatusFileStore.write(payload)
         print("已更新为：\(state.displayName)（\(payload.displayTitle)）")
@@ -349,7 +414,10 @@ do {
             sessionTitle: parsed.sessionTitle,
             workingDirectory: resolvedWorkingDirectory(from: parsed),
             terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
-            terminalTTY: terminalTTY
+            terminalTTY: terminalTTY,
+            cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: parsed),
+            cmuxSurfaceID: resolvedCmuxSurfaceID(from: parsed),
+            cmuxSocketPath: resolvedCmuxSocketPath(from: parsed)
         )
         print("已重置为：\(StatusState.idle.displayName)")
     case "show":

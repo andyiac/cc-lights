@@ -9,6 +9,9 @@ public struct StatusPayload: Codable, Equatable {
     public var workingDirectory: String?
     public var terminalBundleIdentifier: String?
     public var terminalTTY: String?
+    public var cmuxWorkspaceID: String?
+    public var cmuxSurfaceID: String?
+    public var cmuxSocketPath: String?
     public var updatedAt: Date
 
     public init(
@@ -20,6 +23,9 @@ public struct StatusPayload: Codable, Equatable {
         workingDirectory: String? = nil,
         terminalBundleIdentifier: String? = nil,
         terminalTTY: String? = nil,
+        cmuxWorkspaceID: String? = nil,
+        cmuxSurfaceID: String? = nil,
+        cmuxSocketPath: String? = nil,
         updatedAt: Date = Date()
     ) {
         self.state = state
@@ -30,6 +36,9 @@ public struct StatusPayload: Codable, Equatable {
         self.workingDirectory = workingDirectory
         self.terminalBundleIdentifier = terminalBundleIdentifier
         self.terminalTTY = terminalTTY
+        self.cmuxWorkspaceID = cmuxWorkspaceID
+        self.cmuxSurfaceID = cmuxSurfaceID
+        self.cmuxSocketPath = cmuxSocketPath
         self.updatedAt = updatedAt
     }
 
@@ -54,6 +63,9 @@ public struct StatusPayload: Codable, Equatable {
         case workingDirectory
         case terminalBundleIdentifier
         case terminalTTY
+        case cmuxWorkspaceID
+        case cmuxSurfaceID
+        case cmuxSocketPath
         case updatedAt
     }
 
@@ -74,6 +86,9 @@ public struct StatusPayload: Codable, Equatable {
         }
         terminalBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .terminalBundleIdentifier)
         terminalTTY = try container.decodeIfPresent(String.self, forKey: .terminalTTY)
+        cmuxWorkspaceID = try container.decodeIfPresent(String.self, forKey: .cmuxWorkspaceID)
+        cmuxSurfaceID = try container.decodeIfPresent(String.self, forKey: .cmuxSurfaceID)
+        cmuxSocketPath = try container.decodeIfPresent(String.self, forKey: .cmuxSocketPath)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }

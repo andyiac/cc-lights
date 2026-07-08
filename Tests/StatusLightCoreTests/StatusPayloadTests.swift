@@ -20,6 +20,9 @@ final class StatusPayloadTests: XCTestCase {
             workingDirectory: "/tmp/api",
             terminalBundleIdentifier: "com.googlecode.iterm2",
             terminalTTY: "/dev/ttys001",
+            cmuxWorkspaceID: "workspace-123",
+            cmuxSurfaceID: "surface-456",
+            cmuxSocketPath: "/tmp/cmux.sock",
             updatedAt: Date(timeIntervalSince1970: 1_780_000_000)
         )
 
@@ -93,7 +96,10 @@ final class StatusPayloadTests: XCTestCase {
             sessionID: sessionID,
             sessionTitle: "我的会话",
             terminalBundleIdentifier: "com.mitchellh.ghostty",
-            terminalTTY: "/dev/ttys009"
+            terminalTTY: "/dev/ttys009",
+            cmuxWorkspaceID: "workspace-1",
+            cmuxSurfaceID: "surface-1",
+            cmuxSocketPath: "/tmp/cmux.sock"
         ))
 
         // 后续更新不带终端信息（模拟 idle hook）
@@ -103,6 +109,9 @@ final class StatusPayloadTests: XCTestCase {
         XCTAssertEqual(merged.state, .idle)
         XCTAssertEqual(merged.terminalTTY, "/dev/ttys009")
         XCTAssertEqual(merged.terminalBundleIdentifier, "com.mitchellh.ghostty")
+        XCTAssertEqual(merged.cmuxWorkspaceID, "workspace-1")
+        XCTAssertEqual(merged.cmuxSurfaceID, "surface-1")
+        XCTAssertEqual(merged.cmuxSocketPath, "/tmp/cmux.sock")
         XCTAssertEqual(merged.sessionTitle, "我的会话")
     }
 
@@ -128,6 +137,32 @@ final class StatusPayloadTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: freshURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: staleURL.path))
+    }
+
+    func testPruneStaleRemovesLegacyStatusFile() throws {
+        let url = StatusFileStore.statusFileURL
+        let originalData = try? Data(contentsOf: url)
+        defer {
+            if let originalData {
+                try? originalData.write(to: url, options: .atomic)
+            } else {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        try StatusFileStore.ensureDirectoryExists()
+        let stalePayload = StatusPayload(
+            state: .idle,
+            updatedAt: Date(timeIntervalSinceNow: -3600)
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(stalePayload)
+        try data.write(to: url, options: .atomic)
+
+        try StatusFileStore.pruneStale(olderThan: 1800)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
     func testAggregateUsesHighestPriorityState() {

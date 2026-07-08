@@ -66,9 +66,9 @@ The app runs as a menu bar accessory app, so it does not show a Dock icon.
 | Right click a light | Open the settings and status menu. |
 | Option + left click | Open the same menu as right click. |
 
-Terminal focusing is supported for Terminal.app and iTerm2 by matching the TTY. Ghostty is matched by working directory because it does not expose TTY information in the same way.
+Terminal focusing is supported for Terminal.app and iTerm2 by matching the TTY. cmux sessions are focused through the `cmux://` URL scheme using the captured workspace and surface IDs, and the app also reads live Claude sessions from cmux's own hook records. Ghostty is matched by working directory because it does not expose TTY information in the same way.
 
-macOS automation permission is required before the app can focus another terminal application. The first click may trigger a system permission prompt.
+macOS automation permission is required before the app can focus Terminal.app, iTerm2, or Ghostty through AppleScript. cmux focusing uses the `cmux://` URL scheme (opened through LaunchServices) and does not use AppleScript or the cmux socket. The first click may trigger a system permission prompt.
 
 The light style can be changed from the right-click menu. The app keeps the default round style unless you choose the pixel-art light style, and the preference is saved for future launches.
 
@@ -113,6 +113,9 @@ When running from source, use `swift run cc-statusctl` instead of `cc-statusctl`
 | `--title <name>` | | Display title shown in hover details. |
 | `--terminal-bundle <id>` | | Terminal app bundle identifier, such as `com.googlecode.iterm2`. |
 | `--tty <tty>` | | Terminal TTY, such as `/dev/ttys001`, used to focus Terminal.app or iTerm2 sessions. |
+| `--cmux-workspace <id>` | | cmux workspace ID or ref used to focus sessions running inside cmux. Auto-detected from `CMUX_WORKSPACE_ID` when available. |
+| `--cmux-surface <id>` | | cmux surface/panel ID or ref used to focus sessions running inside cmux. Auto-detected from `CMUX_SURFACE_ID` when available. |
+| `--cmux-socket <path>` | | cmux socket path for focusing sessions from outside cmux. Auto-detected from `CMUX_SOCKET_PATH` when available. |
 
 ## Local status files
 
@@ -133,6 +136,9 @@ Each session is represented by one JSON file:
   "taskName": "Build project",
   "terminalBundleIdentifier": "com.googlecode.iterm2",
   "terminalTTY": "/dev/ttys001",
+  "cmuxWorkspaceID": "workspace-id",
+  "cmuxSurfaceID": "surface-id",
+  "cmuxSocketPath": "/tmp/cmux.sock",
   "updatedAt": "2024-01-01T12:00:00Z",
   "workingDirectory": "/Users/example/Developer/cc-status"
 }
@@ -192,7 +198,7 @@ make clean
 
 ### Automation permission
 
-Clicking a status light to focus a terminal window depends on macOS Automation (TCC) permission because the app uses AppleScript to control Terminal.app, iTerm2, or Ghostty.
+Clicking a status light to focus Terminal.app, iTerm2, or Ghostty depends on macOS Automation (TCC) permission because the app uses AppleScript for those terminals. cmux focusing goes through the `cmux://` URL scheme instead.
 
 The bundled `Info.plist` includes `NSAppleEventsUsageDescription`; without it, macOS may silently deny automation from a background menu bar app. The first click may show a prompt asking whether Claude Code Status Light can control the terminal app.
 
@@ -286,6 +292,7 @@ make install
 每个 Claude Code session 会在状态栏显示一个独立圆形灯，不显示文字。灯色和动画表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会回到正在运行该 Claude Code session 的终端窗口或标签页：
 
 - iTerm2 / Terminal.app：按终端 TTY 精确定位窗口或标签页。
+- cmux：通过 `cmux://` 深链接按 workspace 和 surface 精确定位面板。
 - Ghostty：按 session 工作目录匹配终端并 focus，因为 Ghostty 未暴露 TTY。
 
 如果没有 session，会显示一个灰灯占位；右键仍然可打开设置菜单。
@@ -300,7 +307,7 @@ make install
 | 在登录时启动 | 添加或移除 LaunchAgent，实现开机自启。 |
 | 启用通知 | 切换系统通知开关。 |
 | 灯样式 | 在默认圆形灯和像素风格状态灯之间切换。 |
-| 打开 Claude Code 上下文 | 打开终端或 VS Code。 |
+| 打开 Claude Code 上下文 | 切回当前选中 session 所属的终端 App/面板。 |
 | 退出 | 退出 App，会二次确认。 |
 
 ## 使用 CLI 更新状态
@@ -344,8 +351,11 @@ cc-statusctl path
 | `--title <名称>` | | session 在 hover 详情中的显示名称。 |
 | `--terminal-bundle <ID>` | | 终端 App 的 bundle identifier，例如 `com.googlecode.iterm2`。 |
 | `--tty <TTY>` | | 终端 TTY，例如 `/dev/ttys001`，用于点击灯时回到具体窗口或标签页。 |
+| `--cmux-workspace <ID>` | | cmux workspace ID 或 ref；在 cmux 中会自动从 `CMUX_WORKSPACE_ID` 读取。 |
+| `--cmux-surface <ID>` | | cmux surface/panel ID 或 ref；在 cmux 中会自动从 `CMUX_SURFACE_ID` 读取。 |
+| `--cmux-socket <路径>` | | cmux socket 路径；在 cmux 中会自动从 `CMUX_SOCKET_PATH` 读取。 |
 
-`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息。hook 子进程里 `tty` 通常失效时，会沿父进程链用 `ps` 找回控制终端。Ghostty 通过工作目录定位窗口，无需 TTY。
+`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息；在 cmux 中还会自动读取 `CMUX_WORKSPACE_ID`、`CMUX_SURFACE_ID` 和 `CMUX_SOCKET_PATH`。hook 子进程里 `tty` 通常失效时，会沿父进程链用 `ps` 找回控制终端。Ghostty 通过工作目录定位窗口，无需 TTY。
 
 ## 状态文件
 
@@ -366,6 +376,9 @@ cc-statusctl path
   "taskName": "构建项目",
   "terminalBundleIdentifier": "com.googlecode.iterm2",
   "terminalTTY": "/dev/ttys001",
+  "cmuxWorkspaceID": "workspace-id",
+  "cmuxSurfaceID": "surface-id",
+  "cmuxSocketPath": "/tmp/cmux.sock",
   "updatedAt": "2024-01-01T12:00:00Z",
   "workingDirectory": "/Users/example/Developer/cc-status"
 }
@@ -435,7 +448,7 @@ make clean
 
 ### 自动化授权
 
-点击状态灯回到对应终端窗口依赖 macOS 自动化（TCC）授权，因为 App 会通过 AppleScript 控制 Terminal.app、iTerm2 或 Ghostty。
+点击状态灯回到 Terminal.app、iTerm2 或 Ghostty 窗口依赖 macOS 自动化（TCC）授权，因为 App 会通过 AppleScript 控制这些终端。cmux 聚焦通过 `cmux://` 深链接完成，不走 AppleScript，也不需要 cmux socket。
 
 本项目的 `Info.plist` 已包含 `NSAppleEventsUsageDescription`，否则后台菜单栏 App 可能会被系统静默拒绝且不弹授权框。首次点灯时，系统可能会弹出授权请求。
 
