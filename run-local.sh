@@ -15,7 +15,7 @@ swift build -c "${configuration}" --product ClaudeCodeStatusLight --product cc-s
 bin_dir="$(swift build -c "${configuration}" --show-bin-path)"
 app_bin="${bin_dir}/ClaudeCodeStatusLight"
 ctl_bin="${bin_dir}/cc-statusctl"
-app_name="CC Status Light"
+app_name="CC Light"
 app_dir=".build/run-local/${configuration}/${app_name}.app"
 contents_dir="${app_dir}/Contents"
 macos_dir="${contents_dir}/MacOS"
