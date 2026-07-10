@@ -1,5 +1,9 @@
 # Claude Code Status Light
 
+<p align="center">
+  <img src="Resources/AppIcon.png" width="128" alt="CC Status Light logo" />
+</p>
+
 Claude Code Status Light is a macOS menu bar app that shows the live status of one or more Claude Code sessions as small colored lights.
 
 The project is built for developers who keep Claude Code running in a terminal or editor and do not want to constantly switch back just to check whether it is still working, waiting for input, idle, offline, or blocked by an error.

@@ -6,6 +6,8 @@
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
     <string>ClaudeCodeStatusLight</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.github.copilot.ClaudeCodeStatusLight</string>
     <key>CFBundleInfoDictionaryVersion</key>

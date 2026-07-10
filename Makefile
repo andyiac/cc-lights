@@ -4,6 +4,7 @@ DIST_DIR := dist
 APP_DIR := $(DIST_DIR)/$(APP_NAME).app
 CONTENTS_DIR := $(APP_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
+RESOURCES_DIR := $(CONTENTS_DIR)/Resources
 CLI_OUTPUT := $(DIST_DIR)/cc-statusctl
 CLI_INSTALL_DIR := $(HOME)/bin
 CLI_INSTALL_PATH := $(CLI_INSTALL_DIR)/cc-statusctl
@@ -23,7 +24,9 @@ bundle:
 	swift build -c release
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(MACOS_DIR)"
+	mkdir -p "$(RESOURCES_DIR)"
 	cp Resources/Info.plist "$(CONTENTS_DIR)/Info.plist"
+	cp Resources/AppIcon.icns "$(RESOURCES_DIR)/AppIcon.icns"
 	cp .build/release/$(EXECUTABLE) "$(MACOS_DIR)/$(EXECUTABLE)"
 	if [ -f .build/release/cc-statusctl ]; then cp .build/release/cc-statusctl "$(CLI_OUTPUT)"; else cp .build/release/CCStatusCtl "$(CLI_OUTPUT)"; fi
 	chmod +x "$(MACOS_DIR)/$(EXECUTABLE)" "$(CLI_OUTPUT)"

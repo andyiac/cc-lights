@@ -19,6 +19,7 @@ app_name="CC Status Light"
 app_dir=".build/run-local/${configuration}/${app_name}.app"
 contents_dir="${app_dir}/Contents"
 macos_dir="${contents_dir}/MacOS"
+resources_dir="${contents_dir}/Resources"
 bundled_app_bin="${macos_dir}/ClaudeCodeStatusLight"
 
 if [[ ! -x "${app_bin}" ]]; then
@@ -28,7 +29,9 @@ fi
 
 rm -rf "${app_dir}"
 mkdir -p "${macos_dir}"
+mkdir -p "${resources_dir}"
 cp Resources/Info.plist "${contents_dir}/Info.plist"
+cp Resources/AppIcon.icns "${resources_dir}/AppIcon.icns"
 cp "${app_bin}" "${bundled_app_bin}"
 chmod +x "${bundled_app_bin}"
 
