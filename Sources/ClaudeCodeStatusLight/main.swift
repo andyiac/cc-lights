@@ -1599,36 +1599,53 @@ enum ClaudeCodeConfigChecker {
 
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
+        // 写入内置 CLI 的绝对路径，避免 DMG 安装后 hook 在非交互 shell 里找不到 cc-statusctl。
+        let cli = statusctlCommand()
+
         // Notification 只匹配 permission_prompt / elicitation_dialog（需要你操作时），
         // 避免 idle_prompt 等把空闲会话误点亮。PreToolUse 在工具执行前刷回 working，
         // 让批准授权后黄灯回到绿色呼吸。
-        let waitingCommand = "cc-statusctl waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""
+        let waitingCommand = "\(cli) waiting --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"等待你的操作\""
         let entries: [(event: String, matcher: String, command: String)] = [
-            ("UserPromptSubmit", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("PreToolUse", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("PostToolUse", "*", "cc-statusctl working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("Stop", "*", "cc-statusctl idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
-            ("StopFailure", "*", "cc-statusctl error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
+            ("UserPromptSubmit", "*", "\(cli) working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("PreToolUse", "*", "\(cli) working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("PostToolUse", "*", "\(cli) working --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("Stop", "*", "\(cli) idle --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\""),
+            ("StopFailure", "*", "\(cli) error --session \"$CLAUDE_SESSION_ID\" --cwd \"$PWD\" --message \"执行出错\""),
             ("Notification", "permission_prompt", waitingCommand),
             ("Notification", "elicitation_dialog", waitingCommand),
-            ("SessionEnd", "*", "cc-statusctl remove --session \"$CLAUDE_SESSION_ID\"")
+            ("SessionEnd", "*", "\(cli) remove --session \"$CLAUDE_SESSION_ID\"")
         ]
 
-        var added = 0
+        var changed = false
         for entry in entries {
             var groups = hooks[entry.event] as? [[String: Any]] ?? []
-            if hasCCStatusctlCommand(in: groups, matcher: entry.matcher) {
-                continue
-            }
-            groups.append([
+            let newGroup: [String: Any] = [
                 "matcher": entry.matcher,
                 "hooks": [["type": "command", "command": entry.command]]
-            ])
+            ]
+
+            // 替换本 App 之前写入的同 matcher cc-statusctl 分组（可能是旧的裸命令），保留用户其它 hook。
+            if let index = groups.firstIndex(where: { group in
+                (group["matcher"] as? String) == entry.matcher
+                    && ((group["hooks"] as? [[String: Any]])?
+                        .contains { ($0["command"] as? String)?.contains("cc-statusctl") == true } ?? false)
+            }) {
+                let existingCommand = (groups[index]["hooks"] as? [[String: Any]])?
+                    .first?["command"] as? String
+                if existingCommand == entry.command {
+                    continue
+                }
+                groups[index] = newGroup
+            } else {
+                groups.append(newGroup)
+            }
+
             hooks[entry.event] = groups
-            added += 1
+            changed = true
         }
 
-        guard added > 0 else {
+        guard changed else {
             return false
         }
 
@@ -1671,19 +1688,25 @@ enum ClaudeCodeConfigChecker {
         }
     }
 
-    private static func hasCCStatusctlCommand(in groups: [[String: Any]], matcher: String) -> Bool {
-        for group in groups {
-            guard (group["matcher"] as? String) == matcher,
-                  let hookList = group["hooks"] as? [[String: Any]] else {
-                continue
-            }
-            for hook in hookList {
-                if let command = hook["command"] as? String, command.contains("cc-statusctl") {
-                    return true
-                }
-            }
+    /// hook 里写入的 cc-statusctl 命令：优先用 App 内置 CLI 的绝对路径（带引号，兼容路径含空格），
+    /// 找不到内置副本时（如开发环境 swift run）退回裸命令 `cc-statusctl`。
+    private static func statusctlCommand() -> String {
+        if let url = bundledStatusctlURL() {
+            return "\"\(url.path)\""
         }
-        return false
+        return "cc-statusctl"
+    }
+
+    private static func bundledStatusctlURL() -> URL? {
+        let fileManager = FileManager.default
+        var candidates: [URL] = []
+        if let resourceURL = Bundle.main.resourceURL {
+            candidates.append(resourceURL.appendingPathComponent("cc-statusctl", isDirectory: false))
+        }
+        if let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent() {
+            candidates.append(executableDirectory.appendingPathComponent("cc-statusctl", isDirectory: false))
+        }
+        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
     }
 }
 

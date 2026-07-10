@@ -29,7 +29,8 @@ bundle:
 	cp Resources/AppIcon.icns "$(RESOURCES_DIR)/AppIcon.icns"
 	cp .build/release/$(EXECUTABLE) "$(MACOS_DIR)/$(EXECUTABLE)"
 	if [ -f .build/release/cc-statusctl ]; then cp .build/release/cc-statusctl "$(CLI_OUTPUT)"; else cp .build/release/CCStatusCtl "$(CLI_OUTPUT)"; fi
-	chmod +x "$(MACOS_DIR)/$(EXECUTABLE)" "$(CLI_OUTPUT)"
+	cp "$(CLI_OUTPUT)" "$(RESOURCES_DIR)/cc-statusctl"
+	chmod +x "$(MACOS_DIR)/$(EXECUTABLE)" "$(CLI_OUTPUT)" "$(RESOURCES_DIR)/cc-statusctl"
 	codesign --force --sign - "$(APP_DIR)"
 	@echo "Signed $(APP_DIR) (ad-hoc)"
 	@echo "Built $(APP_DIR)"

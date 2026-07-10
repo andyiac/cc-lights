@@ -33,6 +33,10 @@ mkdir -p "${resources_dir}"
 cp Resources/Info.plist "${contents_dir}/Info.plist"
 cp Resources/AppIcon.icns "${resources_dir}/AppIcon.icns"
 cp "${app_bin}" "${bundled_app_bin}"
+if [[ -x "${ctl_bin}" ]]; then
+  cp "${ctl_bin}" "${resources_dir}/cc-statusctl"
+  chmod +x "${resources_dir}/cc-statusctl"
+fi
 chmod +x "${bundled_app_bin}"
 
 echo "Built:"
