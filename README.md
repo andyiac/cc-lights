@@ -193,7 +193,9 @@ cc-statusctl remove --session "$CLAUDE_SESSION_ID"
 
 You can also call the CLI manually from a Claude Code session by prefixing commands with `!`.
 
-The recommended way to wire this up is the **"为我自动配置 Hook"** (auto-configure hooks) item in the right-click menu. It writes the hooks into `~/.claude/settings.json` using the **absolute path** to the `cc-statusctl` copy bundled inside the app, so the hooks work even when `cc-statusctl` is not on your `PATH` (for example after installing from the DMG). After installing a new version of the app, re-run the menu item so the hooks point at the new location. Restart Claude Code for the hooks to take effect.
+The recommended way to wire this up is the **"为我自动配置 Hook"** (auto-configure hooks) item in the right-click menu. It writes the hooks into `~/.claude/settings.json`.
+
+To keep the hooks working regardless of your `PATH`, the app copies its bundled `cc-statusctl` to a stable location under `~/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl` and writes that absolute path into the hooks. Because this path is independent of the app's display name or install location, renaming or moving the app does not break the hooks. On every launch the app also refreshes that copy and silently repairs already-configured hooks to point at it (a one-time `settings.json.bak-*` backup is made when it changes anything), so upgrading is just: install the new app, launch it once, and restart Claude Code.
 
 ## Development
 

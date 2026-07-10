@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = controller
 
         ClaudeCodeConfigChecker.checkAndWarnIfNeeded()
+        // 启动时静默把内置 CLI 落到稳定路径，并修复已配置的 hook（改名/旧裸命令后仍可用）。
+        ClaudeCodeConfigChecker.repairHooksIfConfigured()
 
         let monitor = StatusFileMonitor { [weak controller] payloads in
             controller?.apply(payloads)
@@ -1688,13 +1690,74 @@ enum ClaudeCodeConfigChecker {
         }
     }
 
-    /// hook 里写入的 cc-statusctl 命令：优先用 App 内置 CLI 的绝对路径（带引号，兼容路径含空格），
-    /// 找不到内置副本时（如开发环境 swift run）退回裸命令 `cc-statusctl`。
+    /// hook 里写入的 cc-statusctl 命令：优先用稳定托管路径（与 App 名/位置无关），
+    /// 其次用 App 内置副本，最后退回裸命令（开发环境）。带引号兼容路径含空格。
     private static func statusctlCommand() -> String {
+        if let url = installManagedCLI() ?? existingManagedCLIURL() {
+            return "\"\(url.path)\""
+        }
         if let url = bundledStatusctlURL() {
             return "\"\(url.path)\""
         }
         return "cc-statusctl"
+    }
+
+    /// 稳定托管路径：放在 Application Support 下，与 App 显示名/安装位置无关，
+    /// 因此 App 改名或移动都不会让已写入的 hook 失效。
+    static var managedCLIURL: URL {
+        StatusFileStore.applicationSupportDirectory
+            .appendingPathComponent("cc-statusctl", isDirectory: false)
+    }
+
+    static func existingManagedCLIURL() -> URL? {
+        FileManager.default.isExecutableFile(atPath: managedCLIURL.path) ? managedCLIURL : nil
+    }
+
+    /// 把 App 内置的 cc-statusctl 复制到稳定托管路径（内容不同才原子替换）。返回可用路径。
+    @discardableResult
+    static func installManagedCLI() -> URL? {
+        guard let bundled = bundledStatusctlURL() else {
+            return existingManagedCLIURL()
+        }
+
+        let fileManager = FileManager.default
+        let dest = managedCLIURL
+        do {
+            try fileManager.createDirectory(
+                at: dest.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+
+            if let source = try? Data(contentsOf: bundled),
+               let current = try? Data(contentsOf: dest),
+               source == current {
+                return dest
+            }
+
+            let tempURL = dest.deletingLastPathComponent()
+                .appendingPathComponent("cc-statusctl.\(UUID().uuidString).tmp", isDirectory: false)
+            try fileManager.copyItem(at: bundled, to: tempURL)
+            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempURL.path)
+
+            if fileManager.fileExists(atPath: dest.path) {
+                _ = try fileManager.replaceItemAt(dest, withItemAt: tempURL)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: dest)
+            }
+            return dest
+        } catch {
+            return existingManagedCLIURL()
+        }
+    }
+
+    /// App 启动时静默修复：若已配置过 hook，则把命令重写为当前稳定托管路径，
+    /// 修好旧版写入的裸命令 / 旧 App 路径（改名后失效）等。不改动用户其它 hook。
+    static func repairHooksIfConfigured() {
+        installManagedCLI()
+        guard isHooksConfigured() else {
+            return
+        }
+        _ = try? installHooks()
     }
 
     private static func bundledStatusctlURL() -> URL? {
