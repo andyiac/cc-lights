@@ -50,6 +50,9 @@ make run
 # Package the macOS app and CLI into dist/
 make bundle
 
+# Build a distributable .dmg installer into dist/
+make dmg
+
 # Install the app into /Applications and the CLI into ~/bin
 make install
 ```
@@ -58,6 +61,7 @@ After packaging, `dist/` contains:
 
 - `CC Status Light.app` - the macOS menu bar app
 - `cc-statusctl` - the CLI used to update session status
+- `CC-Status-Light-<version>.dmg` - a drag-to-Applications installer (after `make dmg`)
 
 The app runs as a menu bar accessory app, so it does not show a Dock icon.
 
@@ -269,6 +273,9 @@ make run
 # 打包为 macOS App
 make bundle
 
+# 生成可分发的 .dmg 安装文件（输出到 dist/）
+make dmg
+
 # 安装到 /Applications，并把 CLI 安装到 ~/bin
 make install
 ```
@@ -277,6 +284,7 @@ make install
 
 - `CC Status Light.app` - 菜单栏 App
 - `cc-statusctl` - 命令行工具，也可用 `swift run cc-statusctl`
+- `CC-Status-Light-<版本>.dmg` - 拖拽到 Applications 的安装镜像（执行 `make dmg` 后生成）
 
 启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 以 accessory 模式运行，不会显示 Dock 图标。灯样式可在右键菜单中切换为像素风格，选择会在下次启动时保留。
 

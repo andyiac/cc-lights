@@ -9,7 +9,7 @@ CLI_OUTPUT := $(DIST_DIR)/cc-statusctl
 CLI_INSTALL_DIR := $(HOME)/bin
 CLI_INSTALL_PATH := $(CLI_INSTALL_DIR)/cc-statusctl
 
-.PHONY: build test run bundle install install-cli clean
+.PHONY: build test run bundle dmg install install-cli clean
 
 build:
 	swift build
@@ -34,6 +34,9 @@ bundle:
 	@echo "Signed $(APP_DIR) (ad-hoc)"
 	@echo "Built $(APP_DIR)"
 	@echo "Built $(CLI_OUTPUT)"
+
+dmg: bundle
+	./scripts/make-dmg.sh
 
 install-cli: bundle
 	mkdir -p "$(CLI_INSTALL_DIR)"
