@@ -27,23 +27,6 @@ trap 'rm -rf "${STAGE}"' EXIT
 cp -R "${APP_PATH}" "${STAGE}/"
 ln -s /Applications "${STAGE}/Applications"
 
-if [[ -f "${CLI_PATH}" ]]; then
-  mkdir -p "${STAGE}/CLI (optional)"
-  cp "${CLI_PATH}" "${STAGE}/CLI (optional)/cc-statusctl"
-  cat > "${STAGE}/CLI (optional)/Install CLI.command" <<'CMD'
-#!/bin/bash
-# Install the cc-statusctl helper into ~/bin.
-set -e
-cd "$(dirname "$0")"
-mkdir -p "$HOME/bin"
-cp cc-statusctl "$HOME/bin/cc-statusctl"
-chmod +x "$HOME/bin/cc-statusctl"
-echo "Installed cc-statusctl to $HOME/bin/cc-statusctl"
-echo "Make sure $HOME/bin is on your PATH."
-CMD
-  chmod +x "${STAGE}/CLI (optional)/Install CLI.command"
-fi
-
 cat > "${STAGE}/Install.txt" <<TXT
 ${APP_NAME} ${VERSION}
 
@@ -53,8 +36,11 @@ ${APP_NAME} ${VERSION}
 The app is ad-hoc signed, so the first launch may need:
   Right-click the app > Open, then confirm.
 
-Optional: install the cc-statusctl CLI by running
-"CLI (optional)/Install CLI.command".
+No manual CLI install is needed. On first launch the app installs its
+cc-statusctl helper to
+  ~/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl
+and configures the Claude Code hooks automatically (a backup of
+~/.claude/settings.json is made). Restart Claude Code afterwards.
 TXT
 
 rm -f "${DMG_PATH}"

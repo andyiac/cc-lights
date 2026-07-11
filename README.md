@@ -172,7 +172,24 @@ Notifications can be disabled from the right-click menu.
 
 ## Integrating with Claude Code
 
-The intended setup is to call `cc-statusctl` from Claude Code hooks:
+Setup is automatic. On first launch the app:
+
+1. Installs its bundled `cc-statusctl` helper to a stable, PATH-independent
+   location: `~/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl`.
+2. Writes the Claude Code hooks into `~/.claude/settings.json` using the
+   absolute path to that helper (backing up the file first).
+
+Because the helper path is independent of the app's display name and
+install location, renaming or moving the app does not break the hooks. On
+every launch the app refreshes the helper and repairs already-configured
+hooks to point at it (idempotent; a `settings.json.bak-*` backup is made
+only when something actually changes). So you never install the CLI by
+hand — just install the app, launch it once, and restart Claude Code.
+
+You can re-run the configuration any time from the **"为我自动配置 Hook"**
+item in the right-click menu.
+
+Under the hood the hooks call `cc-statusctl` like this:
 
 ```bash
 # When a turn starts or before a tool runs
@@ -191,11 +208,12 @@ cc-statusctl error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basena
 cc-statusctl remove --session "$CLAUDE_SESSION_ID"
 ```
 
-You can also call the CLI manually from a Claude Code session by prefixing commands with `!`.
+If you want to call the CLI yourself from a terminal or with `!` inside a
+Claude Code session, symlink the managed helper onto your `PATH`, for example:
 
-The recommended way to wire this up is the **"为我自动配置 Hook"** (auto-configure hooks) item in the right-click menu. It writes the hooks into `~/.claude/settings.json`.
-
-To keep the hooks working regardless of your `PATH`, the app copies its bundled `cc-statusctl` to a stable location under `~/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl` and writes that absolute path into the hooks. Because this path is independent of the app's display name or install location, renaming or moving the app does not break the hooks. On every launch the app also refreshes that copy and silently repairs already-configured hooks to point at it (a one-time `settings.json.bak-*` backup is made when it changes anything), so upgrading is just: install the new app, launch it once, and restart Claude Code.
+```bash
+ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl" /usr/local/bin/cc-statusctl
+```
 
 ## Development
 

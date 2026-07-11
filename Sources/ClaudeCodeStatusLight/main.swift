@@ -26,9 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = StatusBarController(notificationController: notificationController)
         statusBarController = controller
 
-        ClaudeCodeConfigChecker.checkAndWarnIfNeeded()
-        // 启动时静默把内置 CLI 落到稳定路径，并修复已配置的 hook（改名/旧裸命令后仍可用）。
-        ClaudeCodeConfigChecker.repairHooksIfConfigured()
+        // 启动即自动落地内置 CLI 到稳定路径，并自动配置/修复 Claude Code hook（无需手动）。
+        ClaudeCodeConfigChecker.setUpHooksOnLaunch()
 
         let monitor = StatusFileMonitor { [weak controller] payloads in
             controller?.apply(payloads)
@@ -1466,13 +1465,42 @@ enum ClaudeCodeConfigChecker {
     private static let claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/settings.json")
 
-    private static let hasCheckedKey = "hasCheckedClaudeHookConfig"
+    private static let hasAutoConfiguredKey = "hasAutoConfiguredClaudeHooks"
 
-    /// 首次启动时自动检查（只弹一次），没配好就提醒
-    static func checkAndWarnIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: hasCheckedKey) else { return }
-        UserDefaults.standard.set(true, forKey: hasCheckedKey)
-        performCheck()
+    /// 启动时自动落地内置 CLI 到稳定路径，并配置/修复 Claude Code hook：
+    /// - 已配置：把命令刷新为稳定路径（修复旧裸命令 / 改名后失效的旧路径），幂等无打扰。
+    /// - 未配置且首次运行：自动写入 hook（无需用户手动），成功后一次性告知需重启 Claude Code。
+    static func setUpHooksOnLaunch() {
+        installManagedCLI()
+
+        let firstRun = !UserDefaults.standard.bool(forKey: hasAutoConfiguredKey)
+        UserDefaults.standard.set(true, forKey: hasAutoConfiguredKey)
+
+        if isHooksConfigured() {
+            _ = try? installHooks()
+            return
+        }
+
+        guard firstRun else { return }
+
+        if (try? installHooks()) == true {
+            notifyAutoConfigured()
+        }
+    }
+
+    private static func notifyAutoConfigured() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "已自动配置 Claude Code 集成"
+            alert.informativeText = """
+            已把状态灯 hook 写入 ~/.claude/settings.json（原文件已备份）。
+
+            请重启 Claude Code 使配置生效。
+            """
+            alert.addButton(withTitle: "知道了")
+            alert.runModal()
+        }
     }
 
     /// 用户从菜单手动检查（每次都弹结果）
@@ -1533,27 +1561,6 @@ enum ClaudeCodeConfigChecker {
         alert.addButton(withTitle: "知道了")
         if !configured, alert.runModal() == .alertFirstButtonReturn {
             installHooksWithUI()
-        }
-    }
-
-    private static func performCheck() {
-        guard !isHooksConfigured() else { return }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            let alert = NSAlert()
-            alert.alertStyle = .informational
-            alert.messageText = "检查 Claude Code 集成"
-            alert.informativeText = """
-            未检测到 Claude Code 的 Hook 配置。
-
-            状态灯已开始运行，但需要配置 Hook 才能自动跟随 Claude Code 的状态变化。
-            点击「为我自动配置」可把 hook 合并进 ~/.claude/settings.json（会先备份原文件），也可稍后在右键菜单中操作。
-            """
-            alert.addButton(withTitle: "为我自动配置")
-            alert.addButton(withTitle: "稍后")
-            if alert.runModal() == .alertFirstButtonReturn {
-                installHooksWithUI()
-            }
         }
     }
 
@@ -1748,16 +1755,6 @@ enum ClaudeCodeConfigChecker {
         } catch {
             return existingManagedCLIURL()
         }
-    }
-
-    /// App 启动时静默修复：若已配置过 hook，则把命令重写为当前稳定托管路径，
-    /// 修好旧版写入的裸命令 / 旧 App 路径（改名后失效）等。不改动用户其它 hook。
-    static func repairHooksIfConfigured() {
-        installManagedCLI()
-        guard isHooksConfigured() else {
-            return
-        }
-        _ = try? installHooks()
     }
 
     private static func bundledStatusctlURL() -> URL? {
