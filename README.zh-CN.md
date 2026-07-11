@@ -10,6 +10,7 @@
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
 [![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#功能概览)
 [![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
+[![Download .dmg](https://img.shields.io/badge/download-.dmg-blue?logo=apple&logoColor=white)](https://github.com/andyiac/cc-lights/releases/latest)
 
 [English](README.md) · **中文**
 
@@ -55,6 +56,16 @@
 
 多个 session 同时存在时，每个 session 独立显示一个灯；右键菜单里的状态汇总按以下优先级展示：`error` > `waiting` > `working` > `idle` > `offline`。
 
+## 下载
+
+从 **[Releases 页面](https://github.com/andyiac/cc-lights/releases/latest)** 获取最新打包好的 `.dmg`：
+
+1. 在最新的 release 中下载 `CC-Lights-<版本>.dmg`。
+2. 打开 DMG，把 **CC Lights.app** 拖进 **Applications**。
+3. 首次启动：App 为 ad-hoc 签名（未公证），请**右键点击 App → 打开**，再确认。
+
+首次启动时 CC Lights 会自动安装 `cc-lights` 命令行工具并配置好 Claude Code hooks——之后重启一次 Claude Code 即可。想自己从源码构建？见[快速开始](#快速开始)。
+
 ## 快速开始
 
 ```bash
@@ -78,7 +89,7 @@ make install
 
 - `CC Lights.app` - 菜单栏 App
 - `cc-lights` - 命令行工具，也可用 `swift run cc-lights`
-- `CC-Status-Light-<版本>.dmg` - 拖拽到 Applications 的安装镜像（执行 `make dmg` 后生成）
+- `CC-Lights-<版本>.dmg` - 拖拽到 Applications 的安装镜像（执行 `make dmg` 后生成）
 
 启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 平时以 accessory 模式运行，不会显示 Dock 图标；打开「偏好设置」窗口时会临时切换到 regular 模式，在 Dock 中显示应用图标，关闭窗口后重新隐藏。灯样式可在偏好设置中切换为像素风格，选择会在下次启动时保留。
 
@@ -274,7 +285,7 @@ CC Lights（Claude Code Status Light）是一款开源的 macOS 状态栏 App，
 
 ### 如何安装？
 
-用 `make bundle` 从源码打包（或 `make dmg` 生成安装镜像），再把 `CC Lights.app` 拖到 `/Applications`。详见[快速开始](#快速开始)。需要 macOS 11+ 与 Swift 5.9+。
+从 [Releases 页面](https://github.com/andyiac/cc-lights/releases/latest) 下载最新的 `CC-Lights-<版本>.dmg`，把 `CC Lights.app` 拖进 `/Applications` 即可。想自己构建？用 `make bundle`（或 `make dmg`）。运行需 macOS 11+；从源码构建还需 Swift 5.9+。
 
 ### 是否免费开源？
 

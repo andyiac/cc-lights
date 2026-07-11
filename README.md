@@ -10,6 +10,7 @@
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
 [![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#features)
 [![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
+[![Download .dmg](https://img.shields.io/badge/download-.dmg-blue?logo=apple&logoColor=white)](https://github.com/andyiac/cc-lights/releases/latest)
 
 **English** · [中文](README.zh-CN.md)
 
@@ -55,6 +56,16 @@ Keep Claude Code running in your terminal or editor and stop switching back just
 
 When multiple sessions are visible, each session gets its own light. The right-click status summary uses this priority order: `error` > `waiting` > `working` > `idle` > `offline`.
 
+## Download
+
+Grab the latest packaged `.dmg` from the **[Releases page](https://github.com/andyiac/cc-lights/releases/latest)**:
+
+1. Download `CC-Lights-<version>.dmg` from the newest release.
+2. Open the DMG and drag **CC Lights.app** into **Applications**.
+3. First launch: the app is ad-hoc signed (not notarized), so **right-click the app → Open**, then confirm.
+
+On first launch CC Lights installs its `cc-lights` CLI and configures the Claude Code hooks automatically — just restart Claude Code afterward. Prefer building from source? See [Quick start](#quick-start).
+
 ## Requirements
 
 - macOS 11 Big Sur or later
@@ -84,7 +95,7 @@ After packaging, `dist/` contains:
 
 - `CC Lights.app` - the macOS menu bar app
 - `cc-lights` - the CLI used to update session status
-- `CC-Status-Light-<version>.dmg` - a drag-to-Applications installer (after `make dmg`)
+- `CC-Lights-<version>.dmg` - a drag-to-Applications installer (after `make dmg`)
 
 The app normally runs as a menu bar accessory app with no Dock icon. While the Preferences window is open it temporarily switches to a regular app and shows a Dock icon, then hides it again when the window closes.
 
@@ -282,7 +293,7 @@ In per-session JSON files under `~/Library/Application Support/ClaudeCodeStatusL
 
 ### How do I install it?
 
-Build from source with `make bundle` (or `make dmg` for a drag-to-Applications installer), then move `CC Lights.app` to `/Applications`. See [Quick start](#quick-start). Requires macOS 11+ and Swift 5.9+.
+Download the latest `CC-Lights-<version>.dmg` from the [Releases page](https://github.com/andyiac/cc-lights/releases/latest), then drag `CC Lights.app` into `/Applications`. Prefer building yourself? Use `make bundle` (or `make dmg`). Requires macOS 11+ and, to build, Swift 5.9+.
 
 ### Is it free and open source?
 
