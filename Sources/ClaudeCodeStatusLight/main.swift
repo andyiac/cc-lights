@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 兜底清理：被强杀/崩溃而未触发 SessionEnd 的残留 session（超过 24 小时未更新）。
             try StatusFileStore.pruneStale(olderThan: 24 * 60 * 60)
         } catch {
-            NSAlert.showError(title: "无法初始化状态文件", message: error.localizedDescription)
+            NSAlert.showError(title: Loc.initFileErrorTitle, message: error.localizedDescription)
         }
 
         notificationController.requestAuthorizationIfNeeded()
@@ -26,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = StatusBarController(notificationController: notificationController)
         statusBarController = controller
         NSApp.mainMenu = Self.buildMainMenu(preferencesTarget: controller)
+
+        // 语言切换时重建主菜单，让「关于/隐藏/编辑/窗口」等标准菜单跟随新语言。
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(rebuildMainMenu),
+            name: .appLanguageDidChange,
+            object: nil
+        )
 
         // 启动即自动落地内置 CLI 到稳定路径，并自动配置/修复 Claude Code hook（无需手动）。
         ClaudeCodeConfigChecker.setUpHooksOnLaunch()
@@ -48,6 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configMonitor?.stop()
     }
 
+    @objc private func rebuildMainMenu() {
+        guard let controller = statusBarController else { return }
+        NSApp.mainMenu = Self.buildMainMenu(preferencesTarget: controller)
+    }
+
     /// 构建标准主菜单：App 处于 regular（打开偏好设置显示 Dock 图标）时提供完整菜单栏，
     /// 让 ⌘, 打开偏好设置、⌘Q 退出、文本框可用 复制/粘贴 等标准编辑命令。
     private static func buildMainMenu(preferencesTarget: AnyObject) -> NSMenu {
@@ -60,51 +73,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
 
-        appMenu.addItem(withTitle: "关于 \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: Loc.menuAbout(appName), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
 
-        let preferencesItem = NSMenuItem(title: "偏好设置…", action: #selector(StatusBarController.openPreferences), keyEquivalent: ",")
+        let preferencesItem = NSMenuItem(title: Loc.preferences, action: #selector(StatusBarController.openPreferences), keyEquivalent: ",")
         preferencesItem.target = preferencesTarget
         appMenu.addItem(preferencesItem)
         appMenu.addItem(.separator())
 
-        let hideItem = appMenu.addItem(withTitle: "隐藏 \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideItem = appMenu.addItem(withTitle: Loc.menuHide(appName), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         hideItem.target = NSApp
 
-        let hideOthersItem = appMenu.addItem(withTitle: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        let hideOthersItem = appMenu.addItem(withTitle: Loc.menuHideOthers, action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthersItem.keyEquivalentModifierMask = [.command, .option]
         hideOthersItem.target = NSApp
 
-        let showAllItem = appMenu.addItem(withTitle: "全部显示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        let showAllItem = appMenu.addItem(withTitle: Loc.menuShowAll, action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         showAllItem.target = NSApp
 
         appMenu.addItem(.separator())
-        let quitItem = appMenu.addItem(withTitle: "退出 \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quitItem = appMenu.addItem(withTitle: Loc.menuQuit(appName), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.target = NSApp
 
         // 编辑菜单（供偏好设置中的文本控件使用标准命令）
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
-        let editMenu = NSMenu(title: "编辑")
+        let editMenu = NSMenu(title: Loc.menuEdit)
         editMenuItem.submenu = editMenu
-        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
-        let redoItem = editMenu.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: Loc.menuUndo, action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = editMenu.addItem(withTitle: Loc.menuRedo, action: Selector(("redo:")), keyEquivalent: "z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: Loc.menuCut, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: Loc.menuCopy, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: Loc.menuPaste, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: Loc.menuSelectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         // 窗口菜单
         let windowMenuItem = NSMenuItem()
         mainMenu.addItem(windowMenuItem)
-        let windowMenu = NSMenu(title: "窗口")
+        let windowMenu = NSMenu(title: Loc.menuWindow)
         windowMenuItem.submenu = windowMenu
-        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(withTitle: Loc.menuMinimize, action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: Loc.menuZoom, action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
-        windowMenu.addItem(withTitle: "关闭", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: Loc.menuClose, action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         NSApp.windowsMenu = windowMenu
 
         return mainMenu
@@ -368,7 +381,7 @@ final class StatusBarController: NSObject {
         statusItem.length = iconStyle.statusItemLength
         button.image = StatusIcon.image(for: state, style: iconStyle)
         button.title = ""
-        button.toolTip = payload.map(tooltip(for:)) ?? "无 Claude Code session\n右键打开设置"
+        button.toolTip = payload.map(tooltip(for:)) ?? Loc.tooltipNoSession
         button.alphaValue = 1.0
     }
 
@@ -403,38 +416,38 @@ final class StatusBarController: NSObject {
                 menu.addItem(NSMenuItem(title: line, action: nil, keyEquivalent: ""))
             }
         } else {
-            menu.addItem(NSMenuItem(title: "无 Claude Code session", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: Loc.noSession, action: nil, keyEquivalent: ""))
         }
 
-        let countItem = NSMenuItem(title: "Sessions：\(currentSessions.count)", action: nil, keyEquivalent: "")
+        let countItem = NSMenuItem(title: Loc.sessionsCount(currentSessions.count), action: nil, keyEquivalent: "")
         menu.addItem(countItem)
 
         menu.addItem(.separator())
 
-        let resetItem = NSMenuItem(title: "重置此 session 为绿灯", action: #selector(resetSelectedToIdle(_:)), keyEquivalent: "r")
+        let resetItem = NSMenuItem(title: Loc.resetSessionToGreen, action: #selector(resetSelectedToIdle(_:)), keyEquivalent: "r")
         resetItem.target = self
         resetItem.representedObject = payload?.sessionID
         resetItem.isEnabled = payload != nil
         menu.addItem(resetItem)
 
-        let clearErrorsItem = NSMenuItem(title: "清除所有错误", action: #selector(clearAllErrors), keyEquivalent: "")
+        let clearErrorsItem = NSMenuItem(title: Loc.clearAllErrors, action: #selector(clearAllErrors), keyEquivalent: "")
         clearErrorsItem.target = self
         clearErrorsItem.isEnabled = currentSessions.contains { $0.state == .error }
         menu.addItem(clearErrorsItem)
 
         menu.addItem(.separator())
 
-        let preferencesItem = NSMenuItem(title: "偏好设置…", action: #selector(openPreferences), keyEquivalent: ",")
+        let preferencesItem = NSMenuItem(title: Loc.preferences, action: #selector(openPreferences), keyEquivalent: ",")
         preferencesItem.target = self
         menu.addItem(preferencesItem)
 
         menu.addItem(.separator())
 
-        let openItem = NSMenuItem(title: "打开 Claude Code 上下文", action: #selector(openClaudeCodeContext), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: Loc.openClaudeCodeContext, action: #selector(openClaudeCodeContext), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
 
-        let quitItem = NSMenuItem(title: "退出 CC Lights...", action: #selector(confirmQuit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: Loc.quitCCLights, action: #selector(confirmQuit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -448,31 +461,31 @@ final class StatusBarController: NSObject {
     private func detailLines(for payload: StatusPayload) -> [String] {
         var lines = [
             payload.displayTitle,
-            "状态：\(displayName(for: payload))",
-            "更新：\(relativeTimeString(since: payload.updatedAt))"
+            Loc.lineStatus(displayName(for: payload)),
+            Loc.lineUpdated(relativeTimeString(since: payload.updatedAt))
         ]
 
         if let taskName = payload.taskName, !taskName.isEmpty {
-            lines.append("任务：\(taskName)")
+            lines.append(Loc.lineTask(taskName))
         }
 
         if let message = payload.message, !message.isEmpty {
-            lines.append("消息：\(message)")
+            lines.append(Loc.lineMessage(message))
         }
 
         if let workingDirectory = payload.workingDirectory, !workingDirectory.isEmpty {
-            lines.append("目录：\(workingDirectory)")
+            lines.append(Loc.lineDirectory(workingDirectory))
         }
 
         if let terminalTTY = payload.terminalTTY, !terminalTTY.isEmpty {
-            lines.append("终端：\(terminalTTY)")
+            lines.append(Loc.lineTerminal(terminalTTY))
         }
 
         let cmuxIDs = [payload.cmuxWorkspaceID, payload.cmuxSurfaceID]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         if !cmuxIDs.isEmpty {
-            lines.append("cmux：\(cmuxIDs.joined(separator: " / "))")
+            lines.append(Loc.lineCmux(cmuxIDs.joined(separator: " / ")))
         }
 
         return lines
@@ -481,16 +494,16 @@ final class StatusBarController: NSObject {
     private func displayName(for payload: StatusPayload) -> String {
         if payload.state == .waiting,
            Date().timeIntervalSince(payload.updatedAt) >= waitingTimeoutDelay {
-            return "等待决策超时"
+            return Loc.stateWaitingTimedOut
         }
 
-        return payload.state.displayName
+        return Loc.stateName(payload.state)
     }
 
     @objc private func resetSelectedToIdle(_ sender: NSMenuItem) {
         guard let sessionID = sender.representedObject as? String,
               let payload = currentSessions.first(where: { $0.sessionID == sessionID }) else {
-            NSAlert.showError(title: "重置失败", message: "无法确定要重置的 session。")
+            NSAlert.showError(title: Loc.resetFailedTitle, message: Loc.resetFailedUnknownSession)
             return
         }
 
@@ -498,7 +511,7 @@ final class StatusBarController: NSObject {
             try resetToIdle(payload)
             apply(try StatusFileStore.readAllSessions())
         } catch {
-            NSAlert.showError(title: "重置失败", message: error.localizedDescription)
+            NSAlert.showError(title: Loc.resetFailedTitle, message: error.localizedDescription)
         }
     }
 
@@ -509,7 +522,7 @@ final class StatusBarController: NSObject {
             }
             apply(try StatusFileStore.readAllSessions())
         } catch {
-            NSAlert.showError(title: "清除错误失败", message: error.localizedDescription)
+            NSAlert.showError(title: Loc.clearErrorsFailedTitle, message: error.localizedDescription)
         }
     }
 
@@ -533,6 +546,9 @@ final class StatusBarController: NSObject {
                 initialStyle: iconStyle,
                 onStyleChange: { [weak self] style in
                     self?.applyLightStyle(style)
+                },
+                onLanguageChange: { [weak self] in
+                    self?.applyLanguageChange()
                 }
             )
         }
@@ -544,6 +560,22 @@ final class StatusBarController: NSObject {
         iconStyle = style
         StatusLightStyle.current = style
         refreshStatusItemIcons()
+    }
+
+    /// 语言切换：刷新菜单栏灯的悬停详情，广播通知让主菜单重建，并用新语言重开偏好设置窗口。
+    private func applyLanguageChange() {
+        refreshStatusItemIcons()
+        NotificationCenter.default.post(name: .appLanguageDidChange, object: nil)
+
+        guard let controller = preferencesWindowController,
+              controller.window?.isVisible == true else {
+            return
+        }
+        controller.close()
+        preferencesWindowController = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.openPreferences()
+        }
     }
 
     func updateHooksConfigured(_ configured: Bool) {
@@ -559,10 +591,10 @@ final class StatusBarController: NSObject {
     @objc private func confirmQuit() {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "退出 CC Lights？"
-        alert.informativeText = "状态栏指示灯将停止显示 Claude Code 状态。"
-        alert.addButton(withTitle: "退出")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = Loc.quitConfirmTitle
+        alert.informativeText = Loc.quitConfirmBody
+        alert.addButton(withTitle: Loc.buttonQuit)
+        alert.addButton(withTitle: Loc.buttonCancel)
 
         if alert.runModal() == .alertFirstButtonReturn {
             NSApp.terminate(nil)
@@ -775,20 +807,14 @@ final class StatusBarController: NSObject {
     private func showMissingSessionContext(for payload: StatusPayload?) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "无法打开 Claude Code session"
+        alert.messageText = Loc.cannotOpenSessionTitle
         if let payload {
-            alert.informativeText = """
-            状态里缺少可定位的终端信息，或对应终端 App 当前没有运行。
-
-            请让 hook 或 CLI 写入当前 session 实际所在的终端信息，例如：
-            cc-lights \(payload.state.rawValue) --session "\(payload.sessionID)" --tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"
-
-            如果 session 在 cmux 中，请写入 --cmux-workspace 和 --cmux-surface。
-            """
+            let command = "cc-lights \(payload.state.rawValue) --session \"\(payload.sessionID)\" --tty \"$(tty)\" --terminal-bundle \"com.googlecode.iterm2\""
+            alert.informativeText = Loc.cannotOpenSessionBody(command: command)
         } else {
-            alert.informativeText = "当前没有可打开的 Claude Code session。"
+            alert.informativeText = Loc.noSessionToOpenBody
         }
-        alert.addButton(withTitle: "知道了")
+        alert.addButton(withTitle: Loc.buttonOK)
         alert.runModal()
     }
 
@@ -802,18 +828,18 @@ final class StatusBarController: NSObject {
     private func relativeTimeString(since date: Date) -> String {
         let elapsed = max(0, Int(Date().timeIntervalSince(date)))
         if elapsed < 10 {
-            return "刚刚"
+            return Loc.timeJustNow
         }
         if elapsed < 60 {
-            return "\(elapsed) 秒前"
+            return Loc.timeSecondsAgo(elapsed)
         }
         if elapsed < 3_600 {
-            return "\(elapsed / 60) 分钟前"
+            return Loc.timeMinutesAgo(elapsed / 60)
         }
         if elapsed < 86_400 {
-            return "\(elapsed / 3_600) 小时前"
+            return Loc.timeHoursAgo(elapsed / 3_600)
         }
-        return "\(elapsed / 86_400) 天前"
+        return Loc.timeDaysAgo(elapsed / 86_400)
     }
 }
 
@@ -839,9 +865,9 @@ enum StatusLightStyle: String, CaseIterable {
     var displayName: String {
         switch self {
         case .round:
-            return "圆形灯"
+            return Loc.lightStyleRound
         case .pixel:
-            return "像素风格"
+            return Loc.lightStylePixel
         }
     }
 
@@ -1071,7 +1097,7 @@ final class StatusFileMonitor {
             }
         } catch {
             DispatchQueue.main.async {
-                NSAlert.showError(title: "无法读取 session 状态", message: error.localizedDescription)
+                NSAlert.showError(title: Loc.readSessionErrorTitle, message: error.localizedDescription)
             }
         }
     }
@@ -1361,9 +1387,9 @@ final class NotificationController {
 
         switch (previousState, payload.state) {
         case (_, .waiting) where previousState != .waiting:
-            send(title: "Claude Code 需要你的决定", body: payload.message ?? "请回到 Claude Code 上下文完成选择。")
+            send(title: Loc.notifyWaitingTitle, body: payload.message ?? Loc.notifyWaitingBody)
         case (_, .error) where previousState != .error:
-            send(title: "Claude Code 执行出错", body: payload.message ?? "请查看 Claude Code 日志。")
+            send(title: Loc.notifyErrorTitle, body: payload.message ?? Loc.notifyErrorBody)
         default:
             break
         }
@@ -1508,13 +1534,9 @@ enum ClaudeCodeConfigChecker {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             let alert = NSAlert()
             alert.alertStyle = .informational
-            alert.messageText = "已自动配置 Claude Code 集成"
-            alert.informativeText = """
-            已把状态灯 hook 写入 ~/.claude/settings.json（原文件已备份）。
-
-            请重启 Claude Code 使配置生效。
-            """
-            alert.addButton(withTitle: "知道了")
+            alert.messageText = Loc.autoConfiguredTitle
+            alert.informativeText = Loc.autoConfiguredBody
+            alert.addButton(withTitle: Loc.buttonOK)
             alert.runModal()
         }
     }
@@ -1524,57 +1546,52 @@ enum ClaudeCodeConfigChecker {
         let configured = isHooksConfigured()
         let alert = NSAlert()
         alert.alertStyle = configured ? .informational : .warning
-        alert.messageText = configured ? "✅ Claude Code Hook 已配置" : "⚠️ 未检测到 Claude Code Hook 配置"
-        alert.informativeText = configured
-            ? "状态灯将自动跟随 Claude Code 的状态变化。\n\n如需调整，请编辑 ~/.claude/settings.json 中的 hooks 配置。"
-            : """
-            状态灯需要 Claude Code 的 Hook 配置才能自动变化颜色。
-
-            请在 ~/.claude/settings.json 中添加以下配置：
-
-            "hooks": {
-              "UserPromptSubmit": [{
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
-              }],
-              "PreToolUse": [{
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
-              }],
-              "PostToolUse": [{
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
-              }],
-              "Stop": [{
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-lights idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
-              }],
-              "StopFailure": [{
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-lights error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
-              }],
-              "Notification": [
-                {
-                  "matcher": "permission_prompt",
-                  "hooks": [{"type": "command", "command": "cc-lights waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
-                },
-                {
-                  "matcher": "elicitation_dialog",
-                  "hooks": [{"type": "command", "command": "cc-lights waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
-                }
-              ],
-              "SessionEnd": [{
-                "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-lights remove --session \\"$CLAUDE_SESSION_ID\\""}]
-              }]
+        alert.messageText = configured ? Loc.hookConfiguredTitle : Loc.hookNotConfiguredTitle
+        let exampleJSON = """
+        "hooks": {
+          "UserPromptSubmit": [{
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+          }],
+          "PreToolUse": [{
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+          }],
+          "PostToolUse": [{
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+          }],
+          "Stop": [{
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "cc-lights idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+          }],
+          "StopFailure": [{
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "cc-lights error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
+          }],
+          "Notification": [
+            {
+              "matcher": "permission_prompt",
+              "hooks": [{"type": "command", "command": "cc-lights waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
+            },
+            {
+              "matcher": "elicitation_dialog",
+              "hooks": [{"type": "command", "command": "cc-lights waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
             }
-
-            或在右键菜单中点击「为我自动配置 Hook」，App 会自动合并（并备份原文件）。
-            """
-        if !configured {
-            alert.addButton(withTitle: "为我自动配置")
+          ],
+          "SessionEnd": [{
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "cc-lights remove --session \\"$CLAUDE_SESSION_ID\\""}]
+          }]
         }
-        alert.addButton(withTitle: "知道了")
+        """
+        alert.informativeText = configured
+            ? Loc.hookConfiguredBody
+            : Loc.hookNotConfiguredBody(json: exampleJSON)
+        if !configured {
+            alert.addButton(withTitle: Loc.autoConfigureButton)
+        }
+        alert.addButton(withTitle: Loc.buttonOK)
         if !configured, alert.runModal() == .alertFirstButtonReturn {
             installHooksWithUI()
         }
@@ -1598,7 +1615,7 @@ enum ClaudeCodeConfigChecker {
         var errorDescription: String? {
             switch self {
             case .invalidSettings:
-                return "~/.claude/settings.json 不是合法的 JSON，请先手动修复后再试。"
+                return Loc.invalidSettingsError
             }
         }
     }
@@ -1703,14 +1720,12 @@ enum ClaudeCodeConfigChecker {
             let didChange = try installHooks()
             let alert = NSAlert()
             alert.alertStyle = .informational
-            alert.messageText = didChange ? "✅ 已写入 Claude Code Hook 配置" : "✅ Claude Code Hook 已配置"
-            alert.informativeText = didChange
-                ? "已把状态灯 hook 合并进 ~/.claude/settings.json（原文件已备份为 settings.json.bak-*）。\n\n请重启 Claude Code 使配置生效。"
-                : "无需改动，hook 已存在。"
-            alert.addButton(withTitle: "知道了")
+            alert.messageText = didChange ? Loc.hooksWrittenTitle : Loc.hookConfiguredTitle
+            alert.informativeText = didChange ? Loc.hooksMergedBody : Loc.hooksNoChangeBody
+            alert.addButton(withTitle: Loc.buttonOK)
             alert.runModal()
         } catch {
-            NSAlert.showError(title: "写入配置失败", message: error.localizedDescription)
+            NSAlert.showError(title: Loc.writeConfigFailedTitle, message: error.localizedDescription)
         }
     }
 

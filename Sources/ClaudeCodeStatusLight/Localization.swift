@@ -1,0 +1,333 @@
+import Foundation
+import StatusLightCore
+
+// MARK: - 语言选择 / Language selection
+
+/// 支持的界面语言。新增语言时：加一个 case，给 `tr(...)` 增加一个可选参数，
+/// 并在各字符串处按需补充翻译（缺失自动回退英文），已有调用点无需改动。
+enum AppLanguage: String, CaseIterable {
+    case english = "en"
+    case chinese = "zh"
+
+    static let overrideDefaultsKey = "appLanguageOverride"
+
+    /// 用户在偏好设置里的显式选择；为 nil 表示跟随系统。
+    static var override: AppLanguage? {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: overrideDefaultsKey) else {
+                return nil
+            }
+            return AppLanguage(rawValue: raw)
+        }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue.rawValue, forKey: overrideDefaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: overrideDefaultsKey)
+            }
+        }
+    }
+
+    /// 当前生效语言：优先用户选择，否则按系统首选语言推断，最后回退英文。
+    static var current: AppLanguage {
+        override ?? systemDefault
+    }
+
+    static var systemDefault: AppLanguage {
+        for language in Locale.preferredLanguages {
+            let lower = language.lowercased()
+            if lower.hasPrefix("zh") { return .chinese }
+            if lower.hasPrefix("en") { return .english }
+        }
+        return .english
+    }
+
+    /// 在语言选择器里显示的名称（用各自语言书写，便于识别）。
+    var displayName: String {
+        switch self {
+        case .english: return "English"
+        case .chinese: return "中文"
+        }
+    }
+}
+
+/// 通知：界面语言发生变化，需要刷新菜单栏、主菜单与已打开的偏好设置窗口。
+extension Notification.Name {
+    static let appLanguageDidChange = Notification.Name("ClaudeCodeStatusLight.appLanguageDidChange")
+}
+
+/// 选取当前语言对应的字符串。`en` 为基准，缺失翻译时回退英文。
+/// 新增第三种语言时给此函数加一个带默认值的可选参数即可，不影响既有调用。
+func tr(_ en: String, zh: String) -> String {
+    switch AppLanguage.current {
+    case .english: return en
+    case .chinese: return zh
+    }
+}
+
+// MARK: - 字符串目录 / String catalog
+
+/// 全部界面字符串集中在此，方便统一维护与新增语言。
+enum Loc {
+    // 状态名（菜单/悬停里展示）
+    static func stateName(_ state: StatusState) -> String {
+        switch state {
+        case .offline: return tr("No session", zh: "无会话")
+        case .working: return tr("Working", zh: "工作中")
+        case .waiting: return tr("Waiting", zh: "等待决策")
+        case .idle: return tr("Idle", zh: "空闲/完成")
+        case .error: return tr("Error", zh: "错误")
+        }
+    }
+
+    static var stateWaitingTimedOut: String {
+        tr("Waiting (timed out)", zh: "等待决策超时")
+    }
+
+    // 灯样式
+    static var lightStyleRound: String { tr("Round", zh: "圆形灯") }
+    static var lightStylePixel: String { tr("Pixel", zh: "像素风格") }
+
+    // 状态栏菜单
+    static var noSession: String { tr("No Claude Code session", zh: "无 Claude Code session") }
+    static var tooltipNoSession: String {
+        tr("No Claude Code session\nRight-click for options", zh: "无 Claude Code session\n右键打开设置")
+    }
+    static func sessionsCount(_ count: Int) -> String {
+        tr("Sessions: \(count)", zh: "Sessions：\(count)")
+    }
+    static var resetSessionToGreen: String { tr("Reset this session to green", zh: "重置此 session 为绿灯") }
+    static var clearAllErrors: String { tr("Clear all errors", zh: "清除所有错误") }
+    static var preferences: String { tr("Preferences…", zh: "偏好设置…") }
+    static var openClaudeCodeContext: String { tr("Open Claude Code context", zh: "打开 Claude Code 上下文") }
+    static var quitCCLights: String { tr("Quit CC Lights…", zh: "退出 CC Lights...") }
+
+    // 悬停/详情行
+    static func lineStatus(_ value: String) -> String { tr("Status: \(value)", zh: "状态：\(value)") }
+    static func lineUpdated(_ value: String) -> String { tr("Updated: \(value)", zh: "更新：\(value)") }
+    static func lineTask(_ value: String) -> String { tr("Task: \(value)", zh: "任务：\(value)") }
+    static func lineMessage(_ value: String) -> String { tr("Message: \(value)", zh: "消息：\(value)") }
+    static func lineDirectory(_ value: String) -> String { tr("Directory: \(value)", zh: "目录：\(value)") }
+    static func lineTerminal(_ value: String) -> String { tr("Terminal: \(value)", zh: "终端：\(value)") }
+    static func lineCmux(_ value: String) -> String { tr("cmux: \(value)", zh: "cmux：\(value)") }
+
+    // 相对时间
+    static var timeJustNow: String { tr("just now", zh: "刚刚") }
+    static func timeSecondsAgo(_ n: Int) -> String { tr("\(n)s ago", zh: "\(n) 秒前") }
+    static func timeMinutesAgo(_ n: Int) -> String { tr("\(n)m ago", zh: "\(n) 分钟前") }
+    static func timeHoursAgo(_ n: Int) -> String { tr("\(n)h ago", zh: "\(n) 小时前") }
+    static func timeDaysAgo(_ n: Int) -> String { tr("\(n)d ago", zh: "\(n) 天前") }
+
+    // 通用按钮
+    static var buttonOK: String { tr("OK", zh: "知道了") }
+    static var buttonQuit: String { tr("Quit", zh: "退出") }
+    static var buttonCancel: String { tr("Cancel", zh: "取消") }
+
+    // 主菜单
+    static func menuAbout(_ appName: String) -> String { tr("About \(appName)", zh: "关于 \(appName)") }
+    static func menuHide(_ appName: String) -> String { tr("Hide \(appName)", zh: "隐藏 \(appName)") }
+    static var menuHideOthers: String { tr("Hide Others", zh: "隐藏其他") }
+    static var menuShowAll: String { tr("Show All", zh: "全部显示") }
+    static func menuQuit(_ appName: String) -> String { tr("Quit \(appName)", zh: "退出 \(appName)") }
+    static var menuEdit: String { tr("Edit", zh: "编辑") }
+    static var menuUndo: String { tr("Undo", zh: "撤销") }
+    static var menuRedo: String { tr("Redo", zh: "重做") }
+    static var menuCut: String { tr("Cut", zh: "剪切") }
+    static var menuCopy: String { tr("Copy", zh: "复制") }
+    static var menuPaste: String { tr("Paste", zh: "粘贴") }
+    static var menuSelectAll: String { tr("Select All", zh: "全选") }
+    static var menuWindow: String { tr("Window", zh: "窗口") }
+    static var menuMinimize: String { tr("Minimize", zh: "最小化") }
+    static var menuZoom: String { tr("Zoom", zh: "缩放") }
+    static var menuClose: String { tr("Close", zh: "关闭") }
+
+    // 通用/系统告警
+    static var initFileErrorTitle: String { tr("Couldn't initialize the status file", zh: "无法初始化状态文件") }
+    static var resetFailedTitle: String { tr("Reset failed", zh: "重置失败") }
+    static var resetFailedUnknownSession: String {
+        tr("Couldn't determine which session to reset.", zh: "无法确定要重置的 session。")
+    }
+    static var clearErrorsFailedTitle: String { tr("Couldn't clear errors", zh: "清除错误失败") }
+    static var readSessionErrorTitle: String { tr("Couldn't read session status", zh: "无法读取 session 状态") }
+
+    // 退出确认
+    static var quitConfirmTitle: String { tr("Quit CC Lights?", zh: "退出 CC Lights？") }
+    static var quitConfirmBody: String {
+        tr("The menu bar lights will stop showing Claude Code status.", zh: "状态栏指示灯将停止显示 Claude Code 状态。")
+    }
+
+    // 打开上下文失败
+    static var cannotOpenSessionTitle: String {
+        tr("Couldn't open the Claude Code session", zh: "无法打开 Claude Code session")
+    }
+    static func cannotOpenSessionBody(command: String) -> String {
+        tr(
+            """
+            The status is missing terminal info to locate the session, or the terminal app isn't running.
+
+            Have your hook or the CLI write the terminal info for the current session, for example:
+            \(command)
+
+            If the session runs in cmux, include --cmux-workspace and --cmux-surface.
+            """,
+            zh: """
+            状态里缺少可定位的终端信息，或对应终端 App 当前没有运行。
+
+            请让 hook 或 CLI 写入当前 session 实际所在的终端信息，例如：
+            \(command)
+
+            如果 session 在 cmux 中，请写入 --cmux-workspace 和 --cmux-surface。
+            """
+        )
+    }
+    static var noSessionToOpenBody: String {
+        tr("There's no Claude Code session to open right now.", zh: "当前没有可打开的 Claude Code session。")
+    }
+
+    // 通知
+    static var notifyWaitingTitle: String { tr("Claude Code needs your decision", zh: "Claude Code 需要你的决定") }
+    static var notifyWaitingBody: String {
+        tr("Return to the Claude Code context to make a choice.", zh: "请回到 Claude Code 上下文完成选择。")
+    }
+    static var notifyErrorTitle: String { tr("Claude Code hit an error", zh: "Claude Code 执行出错") }
+    static var notifyErrorBody: String { tr("Check the Claude Code logs.", zh: "请查看 Claude Code 日志。") }
+
+    // Claude Code 集成检查
+    static var autoConfiguredTitle: String {
+        tr("Claude Code integration configured automatically", zh: "已自动配置 Claude Code 集成")
+    }
+    static var autoConfiguredBody: String {
+        tr(
+            "The status-light hooks were written to ~/.claude/settings.json (the original was backed up).\n\nRestart Claude Code for the change to take effect.",
+            zh: "已把状态灯 hook 写入 ~/.claude/settings.json（原文件已备份）。\n\n请重启 Claude Code 使配置生效。"
+        )
+    }
+    static var hookConfiguredTitle: String { tr("✅ Claude Code hooks configured", zh: "✅ Claude Code Hook 已配置") }
+    static var hookNotConfiguredTitle: String {
+        tr("⚠️ No Claude Code hook configuration detected", zh: "⚠️ 未检测到 Claude Code Hook 配置")
+    }
+    static var hookConfiguredBody: String {
+        tr(
+            "The lights will follow Claude Code's status automatically.\n\nTo adjust, edit the hooks in ~/.claude/settings.json.",
+            zh: "状态灯将自动跟随 Claude Code 的状态变化。\n\n如需调整，请编辑 ~/.claude/settings.json 中的 hooks 配置。"
+        )
+    }
+    /// hook 未配置时的说明；`json` 为示例配置块，两种语言共用。
+    static func hookNotConfiguredBody(json: String) -> String {
+        tr(
+            """
+            The lights need Claude Code's hook configuration to change color automatically.
+
+            Add the following to ~/.claude/settings.json:
+
+            \(json)
+
+            Or click "Auto-configure Hook" in the right-click menu and the app will merge it in (backing up the original).
+            """,
+            zh: """
+            状态灯需要 Claude Code 的 Hook 配置才能自动变化颜色。
+
+            请在 ~/.claude/settings.json 中添加以下配置：
+
+            \(json)
+
+            或在右键菜单中点击「为我自动配置 Hook」，App 会自动合并（并备份原文件）。
+            """
+        )
+    }
+    static var autoConfigureButton: String { tr("Auto-configure for me", zh: "为我自动配置") }
+    static var invalidSettingsError: String {
+        tr(
+            "~/.claude/settings.json isn't valid JSON. Please fix it manually and try again.",
+            zh: "~/.claude/settings.json 不是合法的 JSON，请先手动修复后再试。"
+        )
+    }
+    static var hooksWrittenTitle: String { tr("✅ Claude Code hooks written", zh: "✅ 已写入 Claude Code Hook 配置") }
+    static var hooksMergedBody: String {
+        tr(
+            "The status-light hooks were merged into ~/.claude/settings.json (the original was backed up as settings.json.bak-*).\n\nRestart Claude Code for the change to take effect.",
+            zh: "已把状态灯 hook 合并进 ~/.claude/settings.json（原文件已备份为 settings.json.bak-*）。\n\n请重启 Claude Code 使配置生效。"
+        )
+    }
+    static var hooksNoChangeBody: String { tr("No changes needed — the hooks already exist.", zh: "无需改动，hook 已存在。") }
+    static var writeConfigFailedTitle: String { tr("Couldn't write the configuration", zh: "写入配置失败") }
+
+    // MARK: 偏好设置窗口
+
+    static var prefsWindowTitle: String { tr("CC Lights Preferences", zh: "CC Lights 偏好设置") }
+
+    static var tabGeneral: String { tr("General", zh: "通用") }
+    static var tabNotifications: String { tr("Notifications", zh: "通知") }
+    static var tabIntegration: String { tr("Integration", zh: "集成") }
+    static var tabAbout: String { tr("About", zh: "关于") }
+
+    // 通用分页
+    static var generalStartupHeader: String { tr("Startup", zh: "启动") }
+    static var launchAtLoginCheckbox: String { tr("Launch CC Lights at login", zh: "登录时自动启动 CC Lights") }
+    static var launchAtLoginHelp: String {
+        tr(
+            "When enabled, a launch item is installed in ~/Library/LaunchAgents to start the menu bar lights automatically at login.",
+            zh: "开启后会在 ~/Library/LaunchAgents 中安装启动项，登录时自动拉起菜单栏指示灯。"
+        )
+    }
+    static var lightStyleHeader: String { tr("Status light style", zh: "状态灯样式") }
+    static var lightStylePreviewHelp: String {
+        tr(
+            "Preview, left to right: no session / idle / waiting / error.",
+            zh: "预览从左到右依次为：无会话 / 空闲 / 等待决策 / 错误。"
+        )
+    }
+    static var launchToggleErrorTitle: String {
+        tr("Couldn't update the launch-at-login setting", zh: "无法更新登录启动设置")
+    }
+
+    // 语言
+    static var languageHeader: String { tr("Language", zh: "语言") }
+    static var languageSystemOption: String { tr("System", zh: "跟随系统") }
+    static var languageHelp: String {
+        tr(
+            "Choose the interface language. \"System\" follows your macOS language settings.",
+            zh: "选择界面语言。「跟随系统」会使用 macOS 的语言设置。"
+        )
+    }
+
+    // 通知分页
+    static var notificationsHeader: String { tr("System notifications", zh: "系统通知") }
+    static var enableNotificationsCheckbox: String { tr("Enable system notifications", zh: "启用系统通知") }
+    static var notificationsHelp: String {
+        tr(
+            "Send a system notification when a Claude Code session starts \"waiting\" (needs your approval/confirmation) or hits an error. Available only when running as a .app.",
+            zh: "当某个 Claude Code session 进入「等待决策」（需要你授权/确认）或「执行出错」时，发送一条系统通知提醒你。仅在以 .app 形式运行时可用。"
+        )
+    }
+
+    // 集成分页
+    static var integrationHeader: String { tr("Claude Code hook configuration", zh: "Claude Code Hook 配置") }
+    static var integrationHelp: String {
+        tr(
+            "The lights rely on the hooks in ~/.claude/settings.json to follow Claude Code's status automatically.",
+            zh: "指示灯依赖 ~/.claude/settings.json 中的 hooks 配置，才能随 Claude Code 的状态自动变色。"
+        )
+    }
+    static var integrationAutoConfigureButton: String { tr("Auto-configure Hook", zh: "自动配置 Hook") }
+    static var integrationRecheckButton: String { tr("Re-check", zh: "重新检查") }
+    static var integrationOpenSettingsButton: String { tr("Open settings.json", zh: "打开 settings.json") }
+    static var integrationConfiguredStatus: String {
+        tr("Configured — the lights follow Claude Code's status automatically.", zh: "已配置，指示灯会自动跟随 Claude Code 状态。")
+    }
+    static var integrationNotConfiguredStatus: String {
+        tr("Not configured — the lights won't change color automatically.", zh: "未配置，指示灯不会自动变色。")
+    }
+
+    // 关于分页
+    static var aboutDescription: String {
+        tr(
+            "Shows each Claude Code session's status in the menu bar with traffic lights: green for idle/working, yellow when waiting for a decision, red on error. Click a light to jump back to its terminal.",
+            zh: "在菜单栏用交通灯的方式展示每个 Claude Code session 的状态：绿色空闲/工作、黄色等待决策、红色出错。点击指示灯可直接切回对应终端。"
+        )
+    }
+    static func aboutVersion(_ short: String) -> String { tr("Version \(short)", zh: "版本 \(short)") }
+    static func aboutVersionBuild(_ short: String, _ build: String) -> String {
+        tr("Version \(short) (\(build))", zh: "版本 \(short) (\(build))")
+    }
+}

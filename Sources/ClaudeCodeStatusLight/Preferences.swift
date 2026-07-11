@@ -14,17 +14,19 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     init(
         notificationController: NotificationController,
         initialStyle: StatusLightStyle,
-        onStyleChange: @escaping (StatusLightStyle) -> Void
+        onStyleChange: @escaping (StatusLightStyle) -> Void,
+        onLanguageChange: @escaping () -> Void
     ) {
         tabController = PreferencesTabViewController(
             notificationController: notificationController,
             initialStyle: initialStyle,
-            onStyleChange: onStyleChange
+            onStyleChange: onStyleChange,
+            onLanguageChange: onLanguageChange
         )
 
         let window = NSWindow(contentViewController: tabController)
         window.styleMask = [.titled, .closable, .miniaturizable]
-        window.title = "CC Lights 偏好设置"
+        window.title = Loc.prefsWindowTitle
         window.isReleasedWhenClosed = false
         window.identifier = NSUserInterfaceItemIdentifier("PreferencesWindow")
         if #available(macOS 11.0, *) {
@@ -76,11 +78,13 @@ final class PreferencesTabViewController: NSTabViewController {
     init(
         notificationController: NotificationController,
         initialStyle: StatusLightStyle,
-        onStyleChange: @escaping (StatusLightStyle) -> Void
+        onStyleChange: @escaping (StatusLightStyle) -> Void,
+        onLanguageChange: @escaping () -> Void
     ) {
         generalViewController = GeneralPreferencesViewController(
             initialStyle: initialStyle,
-            onStyleChange: onStyleChange
+            onStyleChange: onStyleChange,
+            onLanguageChange: onLanguageChange
         )
         notificationsViewController = NotificationsPreferencesViewController(
             notificationController: notificationController
@@ -99,10 +103,10 @@ final class PreferencesTabViewController: NSTabViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        addPane(generalViewController, label: "通用", symbol: "gearshape", fallback: NSImage.preferencesGeneralName)
-        addPane(notificationsViewController, label: "通知", symbol: "bell", fallback: NSImage.userAccountsName)
-        addPane(integrationViewController, label: "集成", symbol: "puzzlepiece", fallback: NSImage.networkName)
-        addPane(aboutViewController, label: "关于", symbol: "info.circle", fallback: NSImage.infoName)
+        addPane(generalViewController, label: Loc.tabGeneral, symbol: "gearshape", fallback: NSImage.preferencesGeneralName)
+        addPane(notificationsViewController, label: Loc.tabNotifications, symbol: "bell", fallback: NSImage.userAccountsName)
+        addPane(integrationViewController, label: Loc.tabIntegration, symbol: "puzzlepiece", fallback: NSImage.networkName)
+        addPane(aboutViewController, label: Loc.tabAbout, symbol: "info.circle", fallback: NSImage.infoName)
     }
 
     private func addPane(_ controller: NSViewController, label: String, symbol: String, fallback: NSImage.Name) {
@@ -192,15 +196,24 @@ class PreferencePane: NSViewController {
 
 final class GeneralPreferencesViewController: PreferencePane {
     private let onStyleChange: (StatusLightStyle) -> Void
+    private let onLanguageChange: () -> Void
     private var selectedStyle: StatusLightStyle
     private var launchCheckbox: NSButton?
     private var previewViews: [(state: StatusState, imageView: NSImageView)] = []
 
-    init(initialStyle: StatusLightStyle, onStyleChange: @escaping (StatusLightStyle) -> Void) {
+    /// 语言分段的顺序：跟随系统 / English / 中文。
+    private let languageOptions: [AppLanguage?] = [nil, .english, .chinese]
+
+    init(
+        initialStyle: StatusLightStyle,
+        onStyleChange: @escaping (StatusLightStyle) -> Void,
+        onLanguageChange: @escaping () -> Void
+    ) {
         self.selectedStyle = initialStyle
         self.onStyleChange = onStyleChange
+        self.onLanguageChange = onLanguageChange
         super.init(nibName: nil, bundle: nil)
-        title = "通用"
+        title = Loc.tabGeneral
     }
 
     @available(*, unavailable)
@@ -209,23 +222,40 @@ final class GeneralPreferencesViewController: PreferencePane {
     }
 
     override func buildContent() {
-        addSectionHeader("启动")
+        addSectionHeader(Loc.generalStartupHeader)
 
         let launch = PrefsUI.checkbox(
-            "登录时自动启动 CC Lights",
+            Loc.launchAtLoginCheckbox,
             target: self,
             action: #selector(toggleLaunchAtLogin(_:))
         )
         launch.state = LaunchAtLoginManager.isEnabled ? .on : .off
         launchCheckbox = launch
         stack.addArrangedSubview(launch)
-        addHelpText("开启后会在 ~/Library/LaunchAgents 中安装启动项，登录时自动拉起菜单栏指示灯。")
+        addHelpText(Loc.launchAtLoginHelp)
 
         addSpacing(6)
         addSeparator()
         addSpacing(6)
 
-        addSectionHeader("状态灯样式")
+        addSectionHeader(Loc.languageHeader)
+
+        let languageLabels = languageOptions.map { $0?.displayName ?? Loc.languageSystemOption }
+        let languageControl = NSSegmentedControl(
+            labels: languageLabels,
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(languageChanged(_:))
+        )
+        languageControl.selectedSegment = languageOptions.firstIndex(where: { $0 == AppLanguage.override }) ?? 0
+        stack.addArrangedSubview(languageControl)
+        addHelpText(Loc.languageHelp)
+
+        addSpacing(6)
+        addSeparator()
+        addSpacing(6)
+
+        addSectionHeader(Loc.lightStyleHeader)
 
         let segmented = NSSegmentedControl(
             labels: StatusLightStyle.allCases.map(\.displayName),
@@ -238,7 +268,7 @@ final class GeneralPreferencesViewController: PreferencePane {
 
         addSpacing(4)
         stack.addArrangedSubview(makePreviewRow())
-        addHelpText("预览从左到右依次为：无会话 / 空闲 / 等待决策 / 错误。")
+        addHelpText(Loc.lightStylePreviewHelp)
     }
 
     private func makePreviewRow() -> NSView {
@@ -279,13 +309,23 @@ final class GeneralPreferencesViewController: PreferencePane {
         onStyleChange(style)
     }
 
+    @objc private func languageChanged(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        guard languageOptions.indices.contains(index) else { return }
+        let choice = languageOptions[index]
+        guard choice != AppLanguage.override else { return }
+
+        AppLanguage.override = choice
+        onLanguageChange()
+    }
+
     @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
         let shouldEnable = sender.state == .on
         do {
             try LaunchAtLoginManager.setEnabled(shouldEnable)
         } catch {
             sender.state = shouldEnable ? .off : .on
-            PrefsUI.showError(title: "无法更新登录启动设置", message: error.localizedDescription)
+            PrefsUI.showError(title: Loc.launchToggleErrorTitle, message: error.localizedDescription)
         }
     }
 }
@@ -298,7 +338,7 @@ final class NotificationsPreferencesViewController: PreferencePane {
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
         super.init(nibName: nil, bundle: nil)
-        title = "通知"
+        title = Loc.tabNotifications
     }
 
     @available(*, unavailable)
@@ -307,20 +347,17 @@ final class NotificationsPreferencesViewController: PreferencePane {
     }
 
     override func buildContent() {
-        addSectionHeader("系统通知")
+        addSectionHeader(Loc.notificationsHeader)
 
         let checkbox = PrefsUI.checkbox(
-            "启用系统通知",
+            Loc.enableNotificationsCheckbox,
             target: self,
             action: #selector(toggleNotifications(_:))
         )
         checkbox.state = notificationController.isEnabled ? .on : .off
         stack.addArrangedSubview(checkbox)
 
-        addHelpText(
-            "当某个 Claude Code session 进入「等待决策」（需要你授权/确认）或「执行出错」时，"
-                + "发送一条系统通知提醒你。仅在以 .app 形式运行时可用。"
-        )
+        addHelpText(Loc.notificationsHelp)
     }
 
     @objc private func toggleNotifications(_ sender: NSButton) {
@@ -340,7 +377,7 @@ final class IntegrationPreferencesViewController: PreferencePane {
 
     init() {
         super.init(nibName: nil, bundle: nil)
-        title = "集成"
+        title = Loc.tabIntegration
     }
 
     @available(*, unavailable)
@@ -349,7 +386,7 @@ final class IntegrationPreferencesViewController: PreferencePane {
     }
 
     override func buildContent() {
-        addSectionHeader("Claude Code Hook 配置")
+        addSectionHeader(Loc.integrationHeader)
 
         let statusRow = NSStackView()
         statusRow.orientation = .horizontal
@@ -363,9 +400,7 @@ final class IntegrationPreferencesViewController: PreferencePane {
         statusRow.addArrangedSubview(statusLabel)
         stack.addArrangedSubview(statusRow)
 
-        addHelpText(
-            "指示灯依赖 ~/.claude/settings.json 中的 hooks 配置，才能随 Claude Code 的状态自动变色。"
-        )
+        addHelpText(Loc.integrationHelp)
 
         addSpacing(8)
 
@@ -373,16 +408,16 @@ final class IntegrationPreferencesViewController: PreferencePane {
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
 
-        let install = NSButton(title: "自动配置 Hook", target: self, action: #selector(installHooks))
+        let install = NSButton(title: Loc.integrationAutoConfigureButton, target: self, action: #selector(installHooks))
         install.bezelStyle = .rounded
         installButton = install
         buttonRow.addArrangedSubview(install)
 
-        let recheck = NSButton(title: "重新检查", target: self, action: #selector(recheck))
+        let recheck = NSButton(title: Loc.integrationRecheckButton, target: self, action: #selector(recheck))
         recheck.bezelStyle = .rounded
         buttonRow.addArrangedSubview(recheck)
 
-        let openSettings = NSButton(title: "打开 settings.json", target: self, action: #selector(openSettingsFile))
+        let openSettings = NSButton(title: Loc.integrationOpenSettingsButton, target: self, action: #selector(openSettingsFile))
         openSettings.bezelStyle = .rounded
         buttonRow.addArrangedSubview(openSettings)
 
@@ -397,11 +432,11 @@ final class IntegrationPreferencesViewController: PreferencePane {
             if configured {
                 self.statusIcon.image = PrefsUI.symbolImage("checkmark.circle.fill", fallback: NSImage.statusAvailableName)
                 self.statusIcon.contentTintColor = .systemGreen
-                self.statusLabel.stringValue = "已配置，指示灯会自动跟随 Claude Code 状态。"
+                self.statusLabel.stringValue = Loc.integrationConfiguredStatus
             } else {
                 self.statusIcon.image = PrefsUI.symbolImage("exclamationmark.triangle.fill", fallback: NSImage.statusUnavailableName)
                 self.statusIcon.contentTintColor = .systemOrange
-                self.statusLabel.stringValue = "未配置，指示灯不会自动变色。"
+                self.statusLabel.stringValue = Loc.integrationNotConfiguredStatus
             }
             self.installButton?.isEnabled = !configured
         }
@@ -432,7 +467,7 @@ final class IntegrationPreferencesViewController: PreferencePane {
 final class AboutPreferencesViewController: PreferencePane {
     init() {
         super.init(nibName: nil, bundle: nil)
-        title = "关于"
+        title = Loc.tabAbout
     }
 
     @available(*, unavailable)
@@ -464,9 +499,7 @@ final class AboutPreferencesViewController: PreferencePane {
 
         addSpacing(6)
 
-        let description = NSTextField(wrappingLabelWithString:
-            "在菜单栏用交通灯的方式展示每个 Claude Code session 的状态："
-                + "绿色空闲/工作、黄色等待决策、红色出错。点击指示灯可直接切回对应终端。")
+        let description = NSTextField(wrappingLabelWithString: Loc.aboutDescription)
         description.font = .systemFont(ofSize: NSFont.systemFontSize)
         description.textColor = .secondaryLabelColor
         description.alignment = .center
@@ -485,9 +518,9 @@ final class AboutPreferencesViewController: PreferencePane {
     private var versionString: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
         if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String, !build.isEmpty {
-            return "版本 \(short) (\(build))"
+            return Loc.aboutVersionBuild(short, build)
         }
-        return "版本 \(short)"
+        return Loc.aboutVersion(short)
     }
 }
 
