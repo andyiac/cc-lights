@@ -333,23 +333,34 @@ final class StatusBarController: NSObject {
     }
 
     private func rebuildStatusItems() {
-        statusItems.forEach(NSStatusBar.system.removeStatusItem)
-        statusItems.removeAll()
+        let sortedSessions = currentSessions.sorted(by: sessionSort)
+        // 始终至少保留一个灯：无 session 时显示灰色占位灯。
+        let desiredCount = max(sortedSessions.count, 1)
+
+        // 只按数量差增删 NSStatusItem，其余复用并原地更新。
+        // 之前每次都全部 remove + 重建，频繁增删会偶发「幽灵灯残留」或新灯不刷新颜色，
+        // 表现为「session 没了灯还在」「状态变了颜色不变」。复用可避免这些竞态。
+        while statusItems.count < desiredCount {
+            statusItems.append(makeStatusItem(tag: statusItems.count))
+        }
+        while statusItems.count > desiredCount {
+            NSStatusBar.system.removeStatusItem(statusItems.removeLast())
+        }
+
         visiblePayloadsByTag.removeAll()
 
-        let sortedSessions = currentSessions.sorted(by: sessionSort)
         if sortedSessions.isEmpty {
-            let statusItem = makeStatusItem(tag: placeholderTag)
+            let statusItem = statusItems[0]
+            statusItem.button?.tag = placeholderTag
             configure(statusItem, payload: nil)
-            statusItems.append(statusItem)
             return
         }
 
         for (index, payload) in sortedSessions.enumerated() {
-            let statusItem = makeStatusItem(tag: index)
+            let statusItem = statusItems[index]
+            statusItem.button?.tag = index
             visiblePayloadsByTag[index] = payload
             configure(statusItem, payload: payload)
-            statusItems.append(statusItem)
         }
     }
 
