@@ -10,11 +10,11 @@ if [[ "${1:-}" == "--release" ]]; then
 fi
 
 echo "Building ClaudeCodeStatusLight (${configuration})..."
-swift build -c "${configuration}" --product ClaudeCodeStatusLight --product cc-statusctl
+swift build -c "${configuration}" --product ClaudeCodeStatusLight --product cc-lights
 
 bin_dir="$(swift build -c "${configuration}" --show-bin-path)"
 app_bin="${bin_dir}/ClaudeCodeStatusLight"
-ctl_bin="${bin_dir}/cc-statusctl"
+ctl_bin="${bin_dir}/cc-lights"
 app_name="CC Light"
 app_dir=".build/run-local/${configuration}/${app_name}.app"
 contents_dir="${app_dir}/Contents"
@@ -34,8 +34,8 @@ cp Resources/Info.plist "${contents_dir}/Info.plist"
 cp Resources/AppIcon.icns "${resources_dir}/AppIcon.icns"
 cp "${app_bin}" "${bundled_app_bin}"
 if [[ -x "${ctl_bin}" ]]; then
-  cp "${ctl_bin}" "${resources_dir}/cc-statusctl"
-  chmod +x "${resources_dir}/cc-statusctl"
+  cp "${ctl_bin}" "${resources_dir}/cc-lights"
+  chmod +x "${resources_dir}/cc-lights"
 fi
 chmod +x "${bundled_app_bin}"
 

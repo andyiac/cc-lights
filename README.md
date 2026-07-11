@@ -15,7 +15,7 @@ The project is built for developers who keep Claude Code running in a terminal o
 - Lets you choose the default round light style or a pixel-art light style from the menu.
 - Lets you hover a light to inspect session details such as title, working directory, terminal, current task, message, and update time.
 - Lets you click a light to return to the matching terminal window or tab when terminal automation is available.
-- Provides a small CLI, `cc-statusctl`, so Claude Code hooks or manual commands can update session status.
+- Provides a small CLI, `cc-lights`, so Claude Code hooks or manual commands can update session status.
 - Stores session state locally in JSON files under the user's Application Support directory.
 
 ## Status model
@@ -60,7 +60,7 @@ make install
 After packaging, `dist/` contains:
 
 - `CC Light.app` - the macOS menu bar app
-- `cc-statusctl` - the CLI used to update session status
+- `cc-lights` - the CLI used to update session status
 - `CC-Status-Light-<version>.dmg` - a drag-to-Applications installer (after `make dmg`)
 
 The app runs as a menu bar accessory app, so it does not show a Dock icon.
@@ -84,31 +84,31 @@ The light style can be changed from the right-click menu. The app keeps the defa
 
 ```bash
 # Set the current session state
-cc-statusctl working --task "Build project"
-cc-statusctl waiting --message "Approval required"
-cc-statusctl idle
-cc-statusctl offline --message "Claude Code session exited"
-cc-statusctl error --message "API request failed"
+cc-lights working --task "Build project"
+cc-lights waiting --message "Approval required"
+cc-lights idle
+cc-lights offline --message "Claude Code session exited"
+cc-lights error --message "API request failed"
 
 # Track a specific Claude Code session
-cc-statusctl working \
+cc-lights working \
   --session "$CLAUDE_SESSION_ID" \
   --cwd "$PWD" \
   --title "$(basename "$PWD")"
 
 # Reset to idle
-cc-statusctl reset
+cc-lights reset
 
 # Remove a session light
-cc-statusctl remove --session "$CLAUDE_SESSION_ID"
+cc-lights remove --session "$CLAUDE_SESSION_ID"
 
 # Inspect stored status
-cc-statusctl show
-cc-statusctl show --session "$CLAUDE_SESSION_ID"
-cc-statusctl path
+cc-lights show
+cc-lights show --session "$CLAUDE_SESSION_ID"
+cc-lights path
 ```
 
-When running from source, use `swift run cc-statusctl` instead of `cc-statusctl`.
+When running from source, use `swift run cc-lights` instead of `cc-lights`.
 
 ### CLI options
 
@@ -154,7 +154,7 @@ Each session is represented by one JSON file:
 
 The menu bar app watches this directory and updates lights in real time. The CLI writes status files, so the app and CLI communicate through local filesystem state rather than a background server.
 
-The app removes stale sessions that have not been updated for more than 24 hours. A normal session shutdown should call `cc-statusctl remove --session "$CLAUDE_SESSION_ID"` to remove the light immediately.
+The app removes stale sessions that have not been updated for more than 24 hours. A normal session shutdown should call `cc-lights remove --session "$CLAUDE_SESSION_ID"` to remove the light immediately.
 
 `idle` and `offline` are different:
 
@@ -174,10 +174,19 @@ Notifications can be disabled from the right-click menu.
 
 Setup is automatic. On first launch the app:
 
-1. Installs its bundled `cc-statusctl` helper to a stable, PATH-independent
-   location: `~/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl`.
+1. Installs its bundled `cc-lights` helper to a stable, PATH-independent
+   location: `~/Library/Application Support/ClaudeCodeStatusLight/cc-lights`.
 2. Writes the Claude Code hooks into `~/.claude/settings.json` using the
    absolute path to that helper (backing up the file first).
+3. Symlinks the helper into a writable `PATH` directory (such as
+   `/opt/homebrew/bin` or `/usr/local/bin`) as both `cc-lights` and the
+   legacy name `cc-statusctl`, so even a bare-command hook from any
+   settings file resolves.
+
+The CLI used to be called `cc-statusctl`. On launch the app automatically
+migrates any old `cc-statusctl` hooks to `cc-lights` and keeps a
+`cc-statusctl` compatibility alias (both in the managed folder and on
+`PATH`), so existing setups keep working without manual changes.
 
 Because the helper path is independent of the app's display name and
 install location, renaming or moving the app does not break the hooks. On
@@ -189,30 +198,30 @@ hand — just install the app, launch it once, and restart Claude Code.
 You can re-run the configuration any time from the **"为我自动配置 Hook"**
 item in the right-click menu.
 
-Under the hood the hooks call `cc-statusctl` like this:
+Under the hood the hooks call `cc-lights` like this:
 
 ```bash
 # When a turn starts or before a tool runs
-cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
+cc-lights working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 
 # When Claude Code needs a user decision
-cc-statusctl waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "User input required"
+cc-lights waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "User input required"
 
 # When a turn finishes normally
-cc-statusctl idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
+cc-lights idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 
 # When an API-level failure stops the turn
-cc-statusctl error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "Request failed"
+cc-lights error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "Request failed"
 
 # When the session exits
-cc-statusctl remove --session "$CLAUDE_SESSION_ID"
+cc-lights remove --session "$CLAUDE_SESSION_ID"
 ```
 
 If you want to call the CLI yourself from a terminal or with `!` inside a
 Claude Code session, symlink the managed helper onto your `PATH`, for example:
 
 ```bash
-ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl" /usr/local/bin/cc-statusctl
+ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-lights" /usr/local/bin/cc-lights
 ```
 
 ## Development
@@ -241,7 +250,7 @@ cc-status/
 ├── Sources/
 │   ├── StatusLightCore/        # Shared state model and file store
 │   ├── ClaudeCodeStatusLight/  # macOS menu bar app
-│   └── CCStatusCtl/            # CLI tool
+│   └── CCLights/               # CLI tool
 ├── Tests/
 │   └── StatusLightCoreTests/
 ├── Resources/
@@ -266,7 +275,7 @@ Claude Code Status Light 是一个 macOS 状态栏红绿灯 App。它通过监�
 - 可在菜单中切换默认圆形灯和像素风格状态灯。
 - 鼠标悬停可查看 session 名称/目录、终端、状态、任务/消息和最后更新时间。
 - 点击状态灯可回到对应的终端窗口或标签页。
-- 提供 `cc-statusctl` 命令行工具，便于 Claude Code hooks 或手动命令更新状态。
+- 提供 `cc-lights` 命令行工具，便于 Claude Code hooks 或手动命令更新状态。
 - 所有 session 状态都存储在本地 JSON 文件中。
 
 ## 状态模型
@@ -305,7 +314,7 @@ make install
 打包后在 `dist/` 目录下会生成：
 
 - `CC Light.app` - 菜单栏 App
-- `cc-statusctl` - 命令行工具，也可用 `swift run cc-statusctl`
+- `cc-lights` - 命令行工具，也可用 `swift run cc-lights`
 - `CC-Status-Light-<版本>.dmg` - 拖拽到 Applications 的安装镜像（执行 `make dmg` 后生成）
 
 启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 以 accessory 模式运行，不会显示 Dock 图标。灯样式可在右键菜单中切换为像素风格，选择会在下次启动时保留。
@@ -348,31 +357,31 @@ make install
 
 ```bash
 # 设置状态
-cc-statusctl working --task "编译 main.go"
-cc-statusctl waiting --message "需要确认危险操作"
-cc-statusctl idle
-cc-statusctl offline --message "Claude Code session 已退出"
-cc-statusctl error --message "API 请求失败"
+cc-lights working --task "编译 main.go"
+cc-lights waiting --message "需要确认危险操作"
+cc-lights idle
+cc-lights offline --message "Claude Code session 已退出"
+cc-lights error --message "API 请求失败"
 
 # 指定 session，推荐用于多个 Claude Code session
-cc-statusctl working \
+cc-lights working \
   --session "$CLAUDE_SESSION_ID" \
   --cwd "$PWD" \
   --title "$(basename "$PWD")"
 
-# 重置为绿色，等价于 cc-statusctl idle
-cc-statusctl reset
+# 重置为绿色，等价于 cc-lights idle
+cc-lights reset
 
 # 移除某个 session 的灯
-cc-statusctl remove --session "$CLAUDE_SESSION_ID"
+cc-lights remove --session "$CLAUDE_SESSION_ID"
 
 # 查看状态
-cc-statusctl show
-cc-statusctl show --session "$CLAUDE_SESSION_ID"
-cc-statusctl path
+cc-lights show
+cc-lights show --session "$CLAUDE_SESSION_ID"
+cc-lights path
 ```
 
-未打包时，用 `swift run cc-statusctl` 代替 `cc-statusctl`。
+未打包时，用 `swift run cc-lights` 代替 `cc-lights`。
 
 ### CLI 选项
 
@@ -389,7 +398,7 @@ cc-statusctl path
 | `--cmux-surface <ID>` | | cmux surface/panel ID 或 ref；在 cmux 中会自动从 `CMUX_SURFACE_ID` 读取。 |
 | `--cmux-socket <路径>` | | cmux socket 路径；在 cmux 中会自动从 `CMUX_SOCKET_PATH` 读取。 |
 
-`cc-statusctl` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息；在 cmux 中还会自动读取 `CMUX_WORKSPACE_ID`、`CMUX_SURFACE_ID` 和 `CMUX_SOCKET_PATH`。hook 子进程里 `tty` 通常失效时，会沿父进程链用 `ps` 找回控制终端。Ghostty 通过工作目录定位窗口，无需 TTY。
+`cc-lights` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息；在 cmux 中还会自动读取 `CMUX_WORKSPACE_ID`、`CMUX_SURFACE_ID` 和 `CMUX_SOCKET_PATH`。hook 子进程里 `tty` 通常失效时，会沿父进程链用 `ps` 找回控制终端。Ghostty 通过工作目录定位窗口，无需 TTY。
 
 ## 状态文件
 
@@ -420,7 +429,7 @@ cc-statusctl path
 
 多个进程通过此目录共享状态：App 监控目录变更实时更新灯色，CLI 工具按 session 写入新状态。App 和 CLI 不需要同时启动；可以只用 CLI 写入状态，由 App 负责显示。
 
-状态更新会保留已有的终端定位信息。App 启动时会清理超过 24 小时未更新的残留 session。`SessionEnd` 正常退出时应立即调用 `cc-statusctl remove --session "$CLAUDE_SESSION_ID"` 移除对应灯。
+状态更新会保留已有的终端定位信息。App 启动时会清理超过 24 小时未更新的残留 session。`SessionEnd` 正常退出时应立即调用 `cc-lights remove --session "$CLAUDE_SESSION_ID"` 移除对应灯。
 
 `idle` 和 `offline` 的区别：
 
@@ -438,33 +447,33 @@ App 自动推送系统通知的场景：
 
 ## 与 Claude Code 集成
 
-推荐将 `cc-statusctl` 与 Claude Code hooks 结合，自动更新状态：
+推荐将 `cc-lights` 与 Claude Code hooks 结合，自动更新状态：
 
 ```bash
 # 任务开始或工具执行前
-cc-statusctl working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
+cc-lights working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 
 # 需要用户决策
-cc-statusctl waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请确认后续操作"
+cc-lights waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请确认后续操作"
 
 # 任务正常结束
-cc-statusctl idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
+cc-lights idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 
 # API 层错误导致本轮中断
-cc-statusctl error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请求失败"
+cc-lights error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请求失败"
 
 # Claude Code session 退出
-cc-statusctl remove --session "$CLAUDE_SESSION_ID"
+cc-lights remove --session "$CLAUDE_SESSION_ID"
 ```
 
 也可以在 Claude Code 会话中按需手动调用：
 
 ```bash
-!cc-statusctl working --task "重构用户模块"
-!cc-statusctl waiting --message "请确认接口变更"
-!cc-statusctl error --message "API 请求失败"
-!cc-statusctl idle
-!cc-statusctl offline --message "Claude Code session 已退出"
+!cc-lights working --task "重构用户模块"
+!cc-lights waiting --message "请确认接口变更"
+!cc-lights error --message "API 请求失败"
+!cc-lights idle
+!cc-lights offline --message "Claude Code session 已退出"
 ```
 
 在 Claude Code 中，以 `!` 开头的命令会直接在终端执行。
@@ -495,7 +504,7 @@ cc-status/
 ├── Sources/
 │   ├── StatusLightCore/        # 核心库：状态模型和状态文件读写
 │   ├── ClaudeCodeStatusLight/  # 菜单栏 App
-│   └── CCStatusCtl/            # CLI 工具
+│   └── CCLights/               # CLI 工具
 ├── Tests/
 │   └── StatusLightCoreTests/
 ├── Resources/

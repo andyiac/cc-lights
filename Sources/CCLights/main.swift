@@ -135,15 +135,15 @@ func parse(arguments: [String]) throws -> ParsedCommand {
 func usage() -> String {
     """
     用法:
-      cc-statusctl idle [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-statusctl offline [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-statusctl working [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-statusctl waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-statusctl error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-statusctl reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径]
-      cc-statusctl remove [--session ID]
-      cc-statusctl show [--session ID]
-      cc-statusctl path [--session ID]
+      cc-lights idle [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights offline [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights working [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径]
+      cc-lights remove [--session ID]
+      cc-lights show [--session ID]
+      cc-lights path [--session ID]
     """
 }
 

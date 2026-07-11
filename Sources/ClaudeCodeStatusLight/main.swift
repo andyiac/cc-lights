@@ -770,7 +770,7 @@ final class StatusBarController: NSObject {
             状态里缺少可定位的终端信息，或对应终端 App 当前没有运行。
 
             请让 hook 或 CLI 写入当前 session 实际所在的终端信息，例如：
-            cc-statusctl \(payload.state.rawValue) --session "\(payload.sessionID)" --tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"
+            cc-lights \(payload.state.rawValue) --session "\(payload.sessionID)" --tty "$(tty)" --terminal-bundle "com.googlecode.iterm2"
 
             如果 session 在 cmux 中，请写入 --cmux-workspace 和 --cmux-surface。
             """
@@ -1472,6 +1472,8 @@ enum ClaudeCodeConfigChecker {
     /// - 未配置且首次运行：自动写入 hook（无需用户手动），成功后一次性告知需重启 Claude Code。
     static func setUpHooksOnLaunch() {
         installManagedCLI()
+        ensureLegacyManagedAlias()
+        exposeCLIOnPath()
 
         let firstRun = !UserDefaults.standard.bool(forKey: hasAutoConfiguredKey)
         UserDefaults.standard.set(true, forKey: hasAutoConfiguredKey)
@@ -1519,37 +1521,37 @@ enum ClaudeCodeConfigChecker {
             "hooks": {
               "UserPromptSubmit": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+                "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
               "PreToolUse": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+                "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
               "PostToolUse": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+                "hooks": [{"type": "command", "command": "cc-lights working --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
               "Stop": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
+                "hooks": [{"type": "command", "command": "cc-lights idle --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\""}]
               }],
               "StopFailure": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
+                "hooks": [{"type": "command", "command": "cc-lights error --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"执行出错\\""}]
               }],
               "Notification": [
                 {
                   "matcher": "permission_prompt",
-                  "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
+                  "hooks": [{"type": "command", "command": "cc-lights waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
                 },
                 {
                   "matcher": "elicitation_dialog",
-                  "hooks": [{"type": "command", "command": "cc-statusctl waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
+                  "hooks": [{"type": "command", "command": "cc-lights waiting --session \\"$CLAUDE_SESSION_ID\\" --cwd \\"$PWD\\" --message \\"等待你的操作\\""}]
                 }
               ],
               "SessionEnd": [{
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": "cc-statusctl remove --session \\"$CLAUDE_SESSION_ID\\""}]
+                "hooks": [{"type": "command", "command": "cc-lights remove --session \\"$CLAUDE_SESSION_ID\\""}]
               }]
             }
 
@@ -1608,7 +1610,7 @@ enum ClaudeCodeConfigChecker {
 
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
-        // 写入内置 CLI 的绝对路径，避免 DMG 安装后 hook 在非交互 shell 里找不到 cc-statusctl。
+        // 写入内置 CLI 的绝对路径，避免 DMG 安装后 hook 在非交互 shell 里找不到 cc-lights。
         let cli = statusctlCommand()
 
         // Notification 只匹配 permission_prompt / elicitation_dialog（需要你操作时），
@@ -1638,7 +1640,8 @@ enum ClaudeCodeConfigChecker {
             if let index = groups.firstIndex(where: { group in
                 (group["matcher"] as? String) == entry.matcher
                     && ((group["hooks"] as? [[String: Any]])?
-                        .contains { ($0["command"] as? String)?.contains("cc-statusctl") == true } ?? false)
+                        .contains { (($0["command"] as? String) ?? "").contains("cc-statusctl")
+                            || (($0["command"] as? String) ?? "").contains("cc-lights") } ?? false)
             }) {
                 let existingCommand = (groups[index]["hooks"] as? [[String: Any]])?
                     .first?["command"] as? String
@@ -1697,7 +1700,7 @@ enum ClaudeCodeConfigChecker {
         }
     }
 
-    /// hook 里写入的 cc-statusctl 命令：优先用稳定托管路径（与 App 名/位置无关），
+    /// hook 里写入的 cc-lights 命令：优先用稳定托管路径（与 App 名/位置无关），
     /// 其次用 App 内置副本，最后退回裸命令（开发环境）。带引号兼容路径含空格。
     private static func statusctlCommand() -> String {
         if let url = installManagedCLI() ?? existingManagedCLIURL() {
@@ -1706,21 +1709,21 @@ enum ClaudeCodeConfigChecker {
         if let url = bundledStatusctlURL() {
             return "\"\(url.path)\""
         }
-        return "cc-statusctl"
+        return "cc-lights"
     }
 
     /// 稳定托管路径：放在 Application Support 下，与 App 显示名/安装位置无关，
     /// 因此 App 改名或移动都不会让已写入的 hook 失效。
     static var managedCLIURL: URL {
         StatusFileStore.applicationSupportDirectory
-            .appendingPathComponent("cc-statusctl", isDirectory: false)
+            .appendingPathComponent("cc-lights", isDirectory: false)
     }
 
     static func existingManagedCLIURL() -> URL? {
         FileManager.default.isExecutableFile(atPath: managedCLIURL.path) ? managedCLIURL : nil
     }
 
-    /// 把 App 内置的 cc-statusctl 复制到稳定托管路径（内容不同才原子替换）。返回可用路径。
+    /// 把 App 内置的 cc-lights 复制到稳定托管路径（内容不同才原子替换）。返回可用路径。
     @discardableResult
     static func installManagedCLI() -> URL? {
         guard let bundled = bundledStatusctlURL() else {
@@ -1742,7 +1745,7 @@ enum ClaudeCodeConfigChecker {
             }
 
             let tempURL = dest.deletingLastPathComponent()
-                .appendingPathComponent("cc-statusctl.\(UUID().uuidString).tmp", isDirectory: false)
+                .appendingPathComponent("cc-lights.\(UUID().uuidString).tmp", isDirectory: false)
             try fileManager.copyItem(at: bundled, to: tempURL)
             try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempURL.path)
 
@@ -1757,14 +1760,82 @@ enum ClaudeCodeConfigChecker {
         }
     }
 
+    /// 在托管目录里维护旧名兼容软链 cc-statusctl -> cc-lights，
+    /// 让仍引用旧绝对路径（.../ClaudeCodeStatusLight/cc-statusctl）的 hook 继续可用。
+    static func ensureLegacyManagedAlias() {
+        let fileManager = FileManager.default
+        let alias = StatusFileStore.applicationSupportDirectory
+            .appendingPathComponent("cc-statusctl", isDirectory: false)
+
+        guard fileManager.isExecutableFile(atPath: managedCLIURL.path) else {
+            return
+        }
+
+        if let destination = try? fileManager.destinationOfSymbolicLink(atPath: alias.path) {
+            if destination == managedCLIURL.path {
+                return
+            }
+            try? fileManager.removeItem(at: alias)
+        } else if fileManager.fileExists(atPath: alias.path) {
+            // 真实文件（旧版可能直接复制过 cc-statusctl）：替换为指向 cc-lights 的软链。
+            try? fileManager.removeItem(at: alias)
+        }
+
+        try? fileManager.createSymbolicLink(atPath: alias.path, withDestinationPath: managedCLIURL.path)
+    }
+
+    /// 尽力把 cc-lights 暴露到 hook 运行时 PATH 中的标准位置，让即便写成裸命令
+    /// `cc-statusctl`（可能来自项目级 .claude/settings.json 或旧配置）的 hook 也能找到它。
+    /// 仅在目录已存在且可写时创建/更新指向托管副本的软链，不请求提权，也不覆盖用户已有的真实文件。
+    @discardableResult
+    static func exposeCLIOnPath() -> Bool {
+        guard let cli = existingManagedCLIURL() ?? bundledStatusctlURL() else {
+            return false
+        }
+
+        let fileManager = FileManager.default
+        var linkedAny = false
+
+        for directory in ["/opt/homebrew/bin", "/usr/local/bin"] {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: directory, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  access(directory, W_OK) == 0 else {
+                continue
+            }
+
+            for name in ["cc-lights", "cc-statusctl"] {
+                let namedLink = (directory as NSString).appendingPathComponent(name)
+
+                if let destination = try? fileManager.destinationOfSymbolicLink(atPath: namedLink) {
+                    // 已是软链：指向当前托管路径就跳过，否则更新。
+                    if destination == cli.path {
+                        linkedAny = true
+                        continue
+                    }
+                    try? fileManager.removeItem(atPath: namedLink)
+                } else if fileManager.fileExists(atPath: namedLink) {
+                    // 真实文件（用户自己安装的同名命令）：尊重，不覆盖。
+                    continue
+                }
+
+                if (try? fileManager.createSymbolicLink(atPath: namedLink, withDestinationPath: cli.path)) != nil {
+                    linkedAny = true
+                }
+            }
+        }
+
+        return linkedAny
+    }
+
     private static func bundledStatusctlURL() -> URL? {
         let fileManager = FileManager.default
         var candidates: [URL] = []
         if let resourceURL = Bundle.main.resourceURL {
-            candidates.append(resourceURL.appendingPathComponent("cc-statusctl", isDirectory: false))
+            candidates.append(resourceURL.appendingPathComponent("cc-lights", isDirectory: false))
         }
         if let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent() {
-            candidates.append(executableDirectory.appendingPathComponent("cc-statusctl", isDirectory: false))
+            candidates.append(executableDirectory.appendingPathComponent("cc-lights", isDirectory: false))
         }
         return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
     }

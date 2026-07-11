@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build a distributable .dmg containing the app, a drag-to-Applications
-# shortcut, the cc-statusctl CLI, and a short install note.
+# shortcut, the cc-lights CLI, and a short install note.
 # Requires the packaged app in dist/ (run `make bundle` first).
 set -euo pipefail
 
@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 APP_NAME="CC Light"
 DIST_DIR="dist"
 APP_PATH="${DIST_DIR}/${APP_NAME}.app"
-CLI_PATH="${DIST_DIR}/cc-statusctl"
+CLI_PATH="${DIST_DIR}/cc-lights"
 
 if [[ ! -d "${APP_PATH}" ]]; then
   echo "Missing ${APP_PATH}. Run 'make bundle' first." >&2
@@ -37,8 +37,8 @@ The app is ad-hoc signed, so the first launch may need:
   Right-click the app > Open, then confirm.
 
 No manual CLI install is needed. On first launch the app installs its
-cc-statusctl helper to
-  ~/Library/Application Support/ClaudeCodeStatusLight/cc-statusctl
+cc-lights helper to
+  ~/Library/Application Support/ClaudeCodeStatusLight/cc-lights
 and configures the Claude Code hooks automatically (a backup of
 ~/.claude/settings.json is made). Restart Claude Code afterwards.
 TXT

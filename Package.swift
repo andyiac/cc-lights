@@ -17,8 +17,8 @@ let package = Package(
             targets: ["ClaudeCodeStatusLight"]
         ),
         .executable(
-            name: "cc-statusctl",
-            targets: ["CCStatusCtl"]
+            name: "cc-lights",
+            targets: ["CCLights"]
         )
     ],
     targets: [
@@ -30,7 +30,7 @@ let package = Package(
             dependencies: ["StatusLightCore"]
         ),
         .executableTarget(
-            name: "CCStatusCtl",
+            name: "CCLights",
             dependencies: ["StatusLightCore"]
         ),
         .testTarget(
