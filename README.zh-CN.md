@@ -20,6 +20,12 @@
 
 让 Claude Code 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、离线还是出错**。**点击某个灯，即可立刻切到那个正等你处理的会话**——精确定位到对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 标签页 / 窗口 / 面板。状态由 **Claude Code hooks** 通过内置的 `cc-lights` 命令行工具驱动更新。
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=yQwQsnS-PSc">
+    <img src="https://img.youtube.com/vi/yQwQsnS-PSc/maxresdefault.jpg" alt="CC Lights: 扫一眼状态栏，点一下回终端 —— Claude Code 会话状态一目了然。" width="720">
+  </a>
+</p>
+
 ## ⭐ 一键回到需要你处理的会话
 
 > [!TIP]

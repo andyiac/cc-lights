@@ -20,6 +20,12 @@
 
 Keep Claude Code running in your terminal or editor and stop switching back just to check on it: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. **Click a light to jump straight to the exact session that needs you** — the right **Terminal.app, iTerm2, Ghostty, or cmux** tab, window, or pane. Status updates are driven by **Claude Code hooks** through a tiny bundled CLI, `cc-lights`.
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=yQwQsnS-PSc">
+    <img src="https://img.youtube.com/vi/yQwQsnS-PSc/maxresdefault.jpg" alt="CC Lights: Claude Code status at a glance — click the light, jump to the session." width="720">
+  </a>
+</p>
+
 ## ⭐ One click back to the session that needs you
 
 > [!TIP]
