@@ -1,0 +1,68 @@
+name: Release
+
+# Build the macOS app + CLI, package a DMG, and publish it to GitHub Releases.
+#
+# Trigger it either way:
+#   1. Push a version tag:   git tag v0.1.0 && git push origin v0.1.0
+#   2. Run manually:         Actions tab -> Release -> Run workflow (enter a version)
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 0.1.0 (creates tag v0.1.0)'
+        required: true
+        type: string
+
+# Needed so the workflow can create the release and upload the DMG asset.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version $VERSION (tag v$VERSION)"
+
+      - name: Sync bundle version
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.version.outputs.version }}" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" Resources/Info.plist
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build and package DMG
+        run: make dmg
+
+      - name: List artifacts
+        run: ls -lh dist
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/CC-Lights-*.dmg --clobber
+          else
+            gh release create "$TAG" dist/CC-Lights-*.dmg \
+              --title "CC Lights $VERSION" \
+              --generate-notes
+          fi
