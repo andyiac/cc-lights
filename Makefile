@@ -9,6 +9,14 @@ CLI_OUTPUT := $(DIST_DIR)/cc-lights
 CLI_INSTALL_DIR := $(HOME)/bin
 CLI_INSTALL_PATH := $(CLI_INSTALL_DIR)/cc-lights
 
+# Ship a universal binary (Apple Silicon + Intel) so the app runs on both
+# arm64 and x86_64 Macs. Without x86_64, Intel Macs report
+# "not supported on this Mac".
+ARCH_FLAGS := --arch arm64 --arch x86_64
+RELEASE_FLAGS := -c release $(ARCH_FLAGS)
+# Resolved lazily (recursive '='); --show-bin-path only prints, never compiles.
+RELEASE_BIN = $(shell swift build $(RELEASE_FLAGS) --show-bin-path)
+
 .PHONY: build test run bundle dmg install install-cli clean
 
 build:
@@ -21,19 +29,19 @@ run:
 	swift run $(EXECUTABLE)
 
 bundle:
-	swift build -c release
+	swift build $(RELEASE_FLAGS)
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(MACOS_DIR)"
 	mkdir -p "$(RESOURCES_DIR)"
 	cp Resources/Info.plist "$(CONTENTS_DIR)/Info.plist"
 	cp Resources/AppIcon.icns "$(RESOURCES_DIR)/AppIcon.icns"
-	cp .build/release/$(EXECUTABLE) "$(MACOS_DIR)/$(EXECUTABLE)"
-	if [ -f .build/release/cc-lights ]; then cp .build/release/cc-lights "$(CLI_OUTPUT)"; else cp .build/release/CCLights "$(CLI_OUTPUT)"; fi
+	cp "$(RELEASE_BIN)/$(EXECUTABLE)" "$(MACOS_DIR)/$(EXECUTABLE)"
+	if [ -f "$(RELEASE_BIN)/cc-lights" ]; then cp "$(RELEASE_BIN)/cc-lights" "$(CLI_OUTPUT)"; else cp "$(RELEASE_BIN)/CCLights" "$(CLI_OUTPUT)"; fi
 	cp "$(CLI_OUTPUT)" "$(RESOURCES_DIR)/cc-lights"
 	chmod +x "$(MACOS_DIR)/$(EXECUTABLE)" "$(CLI_OUTPUT)" "$(RESOURCES_DIR)/cc-lights"
 	codesign --force --sign - "$(APP_DIR)"
 	@echo "Signed $(APP_DIR) (ad-hoc)"
-	@echo "Built $(APP_DIR)"
+	@echo "Built $(APP_DIR) [$$(lipo -archs "$(MACOS_DIR)/$(EXECUTABLE)")]"
 	@echo "Built $(CLI_OUTPUT)"
 
 dmg: bundle

@@ -66,9 +66,17 @@ Grab the latest packaged `.dmg` from the **[Releases page](https://github.com/an
 
 On first launch CC Lights installs its `cc-lights` CLI and configures the Claude Code hooks automatically — just restart Claude Code afterward. Prefer building from source? See [Quick start](#quick-start).
 
+> The release `.dmg` is a **universal binary** and runs natively on both Apple Silicon and Intel Macs (macOS 11+).
+
 ## Requirements
 
+**To run the app:**
+
 - macOS 11 Big Sur or later
+- Apple Silicon or Intel — the release `.dmg` ships a **universal binary** that runs natively on both
+
+**To build from source, also:**
+
 - Swift 5.9 or later
 - Xcode Command Line Tools
 

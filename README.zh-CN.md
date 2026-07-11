@@ -66,6 +66,8 @@
 
 首次启动时 CC Lights 会自动安装 `cc-lights` 命令行工具并配置好 Claude Code hooks——之后重启一次 Claude Code 即可。想自己从源码构建？见[快速开始](#快速开始)。
 
+> 发布的 `.dmg` 是**通用二进制（universal）**，在 Apple 芯片和 Intel Mac 上都能原生运行（macOS 11+）。
+
 ## 快速开始
 
 ```bash
