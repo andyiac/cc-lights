@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = StatusBarController(notificationController: notificationController)
         statusBarController = controller
+        NSApp.mainMenu = Self.buildMainMenu(preferencesTarget: controller)
 
         // 启动即自动落地内置 CLI 到稳定路径，并自动配置/修复 Claude Code hook（无需手动）。
         ClaudeCodeConfigChecker.setUpHooksOnLaunch()
@@ -46,6 +47,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusFileMonitor?.stop()
         configMonitor?.stop()
     }
+
+    /// 构建标准主菜单：App 处于 regular（打开偏好设置显示 Dock 图标）时提供完整菜单栏，
+    /// 让 ⌘, 打开偏好设置、⌘Q 退出、文本框可用 复制/粘贴 等标准编辑命令。
+    private static func buildMainMenu(preferencesTarget: AnyObject) -> NSMenu {
+        let appName = (Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String) ?? "CC Lights"
+        let mainMenu = NSMenu()
+
+        // App 菜单
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+
+        appMenu.addItem(withTitle: "关于 \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+
+        let preferencesItem = NSMenuItem(title: "偏好设置…", action: #selector(StatusBarController.openPreferences), keyEquivalent: ",")
+        preferencesItem.target = preferencesTarget
+        appMenu.addItem(preferencesItem)
+        appMenu.addItem(.separator())
+
+        let hideItem = appMenu.addItem(withTitle: "隐藏 \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        hideItem.target = NSApp
+
+        let hideOthersItem = appMenu.addItem(withTitle: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        hideOthersItem.target = NSApp
+
+        let showAllItem = appMenu.addItem(withTitle: "全部显示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        showAllItem.target = NSApp
+
+        appMenu.addItem(.separator())
+        let quitItem = appMenu.addItem(withTitle: "退出 \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+
+        // 编辑菜单（供偏好设置中的文本控件使用标准命令）
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "编辑")
+        editMenuItem.submenu = editMenu
+        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = editMenu.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        // 窗口菜单
+        let windowMenuItem = NSMenuItem()
+        mainMenu.addItem(windowMenuItem)
+        let windowMenu = NSMenu(title: "窗口")
+        windowMenuItem.submenu = windowMenu
+        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(withTitle: "关闭", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        NSApp.windowsMenu = windowMenu
+
+        return mainMenu
+    }
 }
 
 final class StatusBarController: NSObject {
@@ -62,8 +125,8 @@ final class StatusBarController: NSObject {
     private let errorFlashCount = 3
     private let placeholderTag = -1
     private let cmuxDefaultBundleIdentifier = "com.cmuxterm.app"
-    private var isHooksConfigured = false
     private var iconStyle = StatusLightStyle.current
+    private var preferencesWindowController: PreferencesWindowController?
 
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
@@ -359,28 +422,11 @@ final class StatusBarController: NSObject {
         clearErrorsItem.isEnabled = currentSessions.contains { $0.state == .error }
         menu.addItem(clearErrorsItem)
 
-        let loginItem = NSMenuItem(title: "在登录时启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
-        menu.addItem(loginItem)
+        menu.addItem(.separator())
 
-        let notificationsItem = NSMenuItem(title: "启用通知", action: #selector(toggleNotifications), keyEquivalent: "")
-        notificationsItem.target = self
-        notificationsItem.state = notificationController.isEnabled ? .on : .off
-        menu.addItem(notificationsItem)
-
-        menu.addItem(styleMenuItem())
-
-        let configTitle = isHooksConfigured ? "✅ Claude Code 集成已配置..." : "⚠️ 未配置 Claude Code 集成..."
-        let configItem = NSMenuItem(title: configTitle, action: #selector(checkClaudeConfig), keyEquivalent: "")
-        configItem.target = self
-        menu.addItem(configItem)
-
-        if !isHooksConfigured {
-            let installItem = NSMenuItem(title: "为我自动配置 Hook", action: #selector(installClaudeHooks), keyEquivalent: "")
-            installItem.target = self
-            menu.addItem(installItem)
-        }
+        let preferencesItem = NSMenuItem(title: "偏好设置…", action: #selector(openPreferences), keyEquivalent: ",")
+        preferencesItem.target = self
+        menu.addItem(preferencesItem)
 
         menu.addItem(.separator())
 
@@ -441,26 +487,6 @@ final class StatusBarController: NSObject {
         return payload.state.displayName
     }
 
-    private func styleMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "灯样式", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-
-        for style in StatusLightStyle.allCases {
-            let styleItem = NSMenuItem(
-                title: style.displayName,
-                action: #selector(selectLightStyle(_:)),
-                keyEquivalent: ""
-            )
-            styleItem.target = self
-            styleItem.representedObject = style.rawValue
-            styleItem.state = iconStyle == style ? .on : .off
-            submenu.addItem(styleItem)
-        }
-
-        item.submenu = submenu
-        return item
-    }
-
     @objc private func resetSelectedToIdle(_ sender: NSMenuItem) {
         guard let sessionID = sender.representedObject as? String,
               let payload = currentSessions.first(where: { $0.sessionID == sessionID }) else {
@@ -500,44 +526,29 @@ final class StatusBarController: NSObject {
         )
     }
 
-    @objc private func toggleLaunchAtLogin() {
-        do {
-            try LaunchAtLoginManager.setEnabled(!LaunchAtLoginManager.isEnabled)
-        } catch {
-            NSAlert.showError(title: "无法更新登录启动设置", message: error.localizedDescription)
+    @objc func openPreferences() {
+        if preferencesWindowController == nil {
+            preferencesWindowController = PreferencesWindowController(
+                notificationController: notificationController,
+                initialStyle: iconStyle,
+                onStyleChange: { [weak self] style in
+                    self?.applyLightStyle(style)
+                }
+            )
         }
+        preferencesWindowController?.present()
     }
 
-    @objc private func toggleNotifications() {
-        notificationController.isEnabled.toggle()
-        if notificationController.isEnabled {
-            notificationController.requestAuthorizationIfNeeded()
-        }
-    }
-
-    @objc private func selectLightStyle(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let selectedStyle = StatusLightStyle(rawValue: rawValue),
-              selectedStyle != iconStyle else {
-            return
-        }
-
-        iconStyle = selectedStyle
-        StatusLightStyle.current = selectedStyle
+    private func applyLightStyle(_ style: StatusLightStyle) {
+        guard style != iconStyle else { return }
+        iconStyle = style
+        StatusLightStyle.current = style
         refreshStatusItemIcons()
-    }
-
-    @objc private func checkClaudeConfig() {
-        ClaudeCodeConfigChecker.check()
-    }
-
-    @objc private func installClaudeHooks() {
-        ClaudeCodeConfigChecker.installHooksWithUI()
     }
 
     func updateHooksConfigured(_ configured: Bool) {
         DispatchQueue.main.async {
-            self.isHooksConfigured = configured
+            self.preferencesWindowController?.updateHookStatus(configured)
         }
     }
 
@@ -1464,6 +1475,9 @@ private extension NSAlert {
 enum ClaudeCodeConfigChecker {
     private static let claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/settings.json")
+
+    /// 供偏好设置「集成」分页打开/定位配置文件使用。
+    static var settingsFileURL: URL { claudeSettingsURL }
 
     private static let hasAutoConfiguredKey = "hasAutoConfiguredClaudeHooks"
 
