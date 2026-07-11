@@ -1,4 +1,4 @@
-APP_NAME := CC Light
+APP_NAME := CC Lights
 EXECUTABLE := ClaudeCodeStatusLight
 DIST_DIR := dist
 APP_DIR := $(DIST_DIR)/$(APP_NAME).app

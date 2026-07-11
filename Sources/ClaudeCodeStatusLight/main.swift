@@ -388,7 +388,7 @@ final class StatusBarController: NSObject {
         openItem.target = self
         menu.addItem(openItem)
 
-        let quitItem = NSMenuItem(title: "退出 CC Light...", action: #selector(confirmQuit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "退出 CC Lights...", action: #selector(confirmQuit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -548,7 +548,7 @@ final class StatusBarController: NSObject {
     @objc private func confirmQuit() {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "退出 CC Light？"
+        alert.messageText = "退出 CC Lights？"
         alert.informativeText = "状态栏指示灯将停止显示 Claude Code 状态。"
         alert.addButton(withTitle: "退出")
         alert.addButton(withTitle: "取消")

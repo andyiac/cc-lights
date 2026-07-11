@@ -6,7 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APP_NAME="CC Light"
+APP_NAME="CC Lights"
 DIST_DIR="dist"
 APP_PATH="${DIST_DIR}/${APP_NAME}.app"
 CLI_PATH="${DIST_DIR}/cc-lights"

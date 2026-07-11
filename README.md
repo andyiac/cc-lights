@@ -1,7 +1,7 @@
 # Claude Code Status Light
 
 <p align="center">
-  <img src="Resources/AppIcon.png" width="128" alt="CC Light logo" />
+  <img src="Resources/AppIcon.png" width="128" alt="CC Lights logo" />
 </p>
 
 Claude Code Status Light is a macOS menu bar app that shows the live status of one or more Claude Code sessions as small colored lights.
@@ -59,7 +59,7 @@ make install
 
 After packaging, `dist/` contains:
 
-- `CC Light.app` - the macOS menu bar app
+- `CC Lights.app` - the macOS menu bar app
 - `cc-lights` - the CLI used to update session status
 - `CC-Status-Light-<version>.dmg` - a drag-to-Applications installer (after `make dmg`)
 
@@ -239,7 +239,7 @@ make clean
 
 Clicking a status light to focus Terminal.app, iTerm2, or Ghostty depends on macOS Automation (TCC) permission because the app uses AppleScript for those terminals. cmux focusing goes through the `cmux://` URL scheme instead.
 
-The bundled `Info.plist` includes `NSAppleEventsUsageDescription`; without it, macOS may silently deny automation from a background menu bar app. The first click may show a prompt asking whether CC Light can control the terminal app.
+The bundled `Info.plist` includes `NSAppleEventsUsageDescription`; without it, macOS may silently deny automation from a background menu bar app. The first click may show a prompt asking whether CC Lights can control the terminal app.
 
 `make install` uses ad-hoc signing. Reinstalling after rebuilding can make macOS treat the app as a new identity, so automation permission may need to be granted again.
 
@@ -313,7 +313,7 @@ make install
 
 打包后在 `dist/` 目录下会生成：
 
-- `CC Light.app` - 菜单栏 App
+- `CC Lights.app` - 菜单栏 App
 - `cc-lights` - 命令行工具，也可用 `swift run cc-lights`
 - `CC-Status-Light-<版本>.dmg` - 拖拽到 Applications 的安装镜像（执行 `make dmg` 后生成）
 
