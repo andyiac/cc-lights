@@ -17,13 +17,22 @@
 
 **Claude Code Status Light** (**CC Lights**) is a lightweight **macOS menu bar app** that shows the live status of one or more **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** sessions as small, color-coded **traffic lights** — green while working or idle, yellow when it needs your input, red on error, and gray when offline.
 
-Keep Claude Code running in your terminal or editor and stop switching back just to check on it: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. Click a light to jump straight back to the matching **Terminal.app, iTerm2, Ghostty, or cmux** session. Status updates are driven by **Claude Code hooks** through a tiny bundled CLI, `cc-lights`.
+Keep Claude Code running in your terminal or editor and stop switching back just to check on it: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. **Click a light to jump straight to the exact session that needs you** — the right **Terminal.app, iTerm2, Ghostty, or cmux** tab, window, or pane. Status updates are driven by **Claude Code hooks** through a tiny bundled CLI, `cc-lights`.
+
+## ⭐ One click back to the session that needs you
+
+> [!TIP]
+> **When a light turns yellow (waiting for your input) or red (error), just click it — CC Lights instantly brings that exact Claude Code session to the front.** No more hunting through a dozen terminal windows and tabs to find which one is blocked on your approval.
+
+- 🟡 **Waiting** → click the yellow light → you land right in the prompt asking for your approval, choice, or input.
+- 🔴 **Error** → click the red light → jump straight to the session that failed.
+- Works across **Terminal.app, iTerm2, Ghostty, and cmux** — the correct tab / window / pane is focused via TTY, working directory, or the `cmux://` deep link.
 
 ## Features
 
+- **One-click jump to the right session** — click any light to focus its Terminal.app, iTerm2, Ghostty, or cmux tab / window / pane. Perfect for pouncing on a session that is waiting for your input.
 - **Per-session status lights** — a separate menu bar light for every tracked Claude Code session.
 - **Traffic-light cues** — color and animation make the state obvious at a glance: breathing green while working, solid yellow when waiting for you, flashing red on error, gray when offline.
-- **Click to focus** — jump back to the matching Terminal.app, iTerm2, Ghostty, or cmux session in one click.
 - **Native macOS notifications** — get notified the moment a session needs a decision or hits an API error.
 - **Zero-config Claude Code hooks** — the app installs its `cc-lights` CLI and wires up `~/.claude/settings.json` for you on first launch (with a backup).
 - **Preferences window** — a macOS System Settings / Shottr-style window for launch-at-login, light style, notifications, and integration.

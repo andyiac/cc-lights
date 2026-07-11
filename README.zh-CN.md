@@ -17,13 +17,22 @@
 
 **Claude Code Status Light**（**CC Lights**）是一款轻量的 **macOS 状态栏 App**，把一个或多个 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** 会话的实时状态显示为状态栏上的**红绿灯**——工作/空闲为绿色，需要你操作时变黄，出错变红，无会话时为灰色。
 
-让 Claude Code 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、离线还是出错**。点击某个灯即可切回对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 会话。状态由 **Claude Code hooks** 通过内置的 `cc-lights` 命令行工具驱动更新。
+让 Claude Code 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、离线还是出错**。**点击某个灯，即可立刻切到那个正等你处理的会话**——精确定位到对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 标签页 / 窗口 / 面板。状态由 **Claude Code hooks** 通过内置的 `cc-lights` 命令行工具驱动更新。
+
+## ⭐ 一键回到需要你处理的会话
+
+> [!TIP]
+> **当某个灯变黄（等待你的输入）或变红（出错）时，点一下它，CC Lights 就把那个 Claude Code 会话立刻切到最前。** 再也不用在一堆终端窗口和标签页里翻找到底是哪个在等你确认。
+
+- 🟡 **等待决策** → 点击黄灯 → 直接落到那个等你批准、选择或输入的提示上。
+- 🔴 **出错** → 点击红灯 → 直接跳到出错的会话。
+- 支持 **Terminal.app、iTerm2、Ghostty、cmux**——按 TTY、工作目录或 `cmux://` 深链接精确 focus 到对应的标签页 / 窗口 / 面板。
 
 ## 功能概览
 
+- **一键切回目标会话** —— 点击任意灯，即可 focus 到它对应的 Terminal.app、iTerm2、Ghostty 或 cmux 标签页 / 窗口 / 面板；尤其适合第一时间处理正在等你输入的会话。
 - **每会话独立状态灯** —— 每个 Claude Code session 在状态栏各显示一个圆形灯。
 - **交通灯语义** —— 用颜色和动画一眼看清状态：工作中绿色呼吸、等待你操作时黄色常亮、出错时红色闪烁、离线为灰色。
-- **点击直达** —— 一键切回对应的 Terminal.app、iTerm2、Ghostty 或 cmux 会话。
 - **原生系统通知** —— 会话需要决策或发生 API 错误时立即通知你。
 - **零配置接入 Claude Code hooks** —— 首次启动自动安装 `cc-lights` 并写好 `~/.claude/settings.json`（先备份）。
 - **偏好设置窗口** —— 参考 macOS 系统设置 / Shottr 风格，集中管理登录启动、灯样式、通知与集成。
