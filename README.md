@@ -43,13 +43,13 @@ Keep Claude Code running in your terminal or editor and stop switching back just
 
 ## Status model
 
-| Light | State | Traffic-light cue | Meaning |
-| --- | --- | --- | --- |
-| Gray | `offline` | No active session | No tracked Claude Code session exists, or the session has exited. |
-| Pulsing green | `working` | Green means Claude Code is running | Claude Code is actively running a task and does not need user input. |
-| Solid yellow, then slow pulsing yellow after 30s without a response | `waiting` | Yellow means user attention is needed | Claude Code needs user confirmation, authorization, selection, or input. |
-| Solid green | `idle` | Green means ready | A session exists and is ready for the next prompt. |
-| Red, flashing briefly when it first turns red | `error` | Red means API-level failure | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
+| | Light | State | Traffic-light cue | Meaning |
+| :---: | --- | --- | --- | --- |
+| ⚪ | Gray | `offline` | No active session | No tracked Claude Code session exists, or the session has exited. |
+| 🟢 | Pulsing green | `working` | Green means Claude Code is running | Claude Code is actively running a task and does not need user input. |
+| 🟡 | Solid yellow, then slow pulsing yellow after 30s without a response | `waiting` | Yellow means user attention is needed | Claude Code needs user confirmation, authorization, selection, or input. |
+| 🟢 | Solid green | `idle` | Green means ready | A session exists and is ready for the next prompt. |
+| 🔴 | Red, flashing briefly when it first turns red | `error` | Red means API-level failure | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
 
 `working` and `idle` are both green and are distinguished by breathing animation. `waiting` is yellow so it is visually separate from idle/complete, and red is reserved for API-level failures, not for ordinary tool or shell command failures.
 
