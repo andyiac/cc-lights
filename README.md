@@ -1,26 +1,36 @@
-# Claude Code Status Light
+<div align="center">
 
-<p align="center">
-  <img src="Resources/AppIcon.png" width="128" alt="CC Lights logo" />
-</p>
+# CC Lights
 
-<p align="center">
-  <b>English</b> · <a href="README.zh-CN.md">中文</a>
-</p>
+### Menu bar traffic lights for Claude Code — see every session's status at a glance
 
-Claude Code Status Light is a macOS menu bar app that shows the live status of one or more Claude Code sessions as small colored lights.
+<img src="Resources/AppIcon.png" width="120" alt="CC Lights — Claude Code Status Light for macOS" />
 
-The project is built for developers who keep Claude Code running in a terminal or editor and do not want to constantly switch back just to check whether it is still working, waiting for input, idle, offline, or blocked by an error.
+[![Platform: macOS 11+](https://img.shields.io/badge/platform-macOS%2011%2B-black?logo=apple)](https://www.apple.com/macos/)
+[![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
+[![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#features)
+[![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
 
-## What it does
+**English** · [中文](README.zh-CN.md)
 
-- Shows a separate menu bar light for each tracked Claude Code session.
-- Uses traffic-light color cues and animation to make the current session state visible at a glance.
-- Lets you choose the default round light style or a pixel-art light style from Preferences.
-- Lets you hover a light to inspect session details such as title, working directory, terminal, current task, message, and update time.
-- Lets you click a light to return to the matching terminal window or tab when terminal automation is available.
-- Provides a small CLI, `cc-lights`, so Claude Code hooks or manual commands can update session status.
-- Stores session state locally in JSON files under the user's Application Support directory.
+</div>
+
+**Claude Code Status Light** (**CC Lights**) is a lightweight **macOS menu bar app** that shows the live status of one or more **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** sessions as small, color-coded **traffic lights** — green while working or idle, yellow when it needs your input, red on error, and gray when offline.
+
+Keep Claude Code running in your terminal or editor and stop switching back just to check on it: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. Click a light to jump straight back to the matching **Terminal.app, iTerm2, Ghostty, or cmux** session. Status updates are driven by **Claude Code hooks** through a tiny bundled CLI, `cc-lights`.
+
+## Features
+
+- **Per-session status lights** — a separate menu bar light for every tracked Claude Code session.
+- **Traffic-light cues** — color and animation make the state obvious at a glance: breathing green while working, solid yellow when waiting for you, flashing red on error, gray when offline.
+- **Click to focus** — jump back to the matching Terminal.app, iTerm2, Ghostty, or cmux session in one click.
+- **Native macOS notifications** — get notified the moment a session needs a decision or hits an API error.
+- **Zero-config Claude Code hooks** — the app installs its `cc-lights` CLI and wires up `~/.claude/settings.json` for you on first launch (with a backup).
+- **Preferences window** — a macOS System Settings / Shottr-style window for launch-at-login, light style, notifications, and integration.
+- **Round or pixel-art lights** — pick a style in Preferences; the choice is remembered across launches.
+- **Multi-session aware** — many parallel sessions each get their own light, with a priority-based summary (`error` > `waiting` > `working` > `idle` > `offline`).
+- **Local-first** — session state lives in plain JSON files under Application Support; no background server, no account, no telemetry.
+- **Tiny CLI** — `cc-lights` lets hooks or manual commands update session status.
 
 ## Status model
 
@@ -238,6 +248,36 @@ Claude Code session, symlink the managed helper onto your `PATH`, for example:
 ```bash
 ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-lights" /usr/local/bin/cc-lights
 ```
+
+## FAQ
+
+### What is CC Lights?
+
+CC Lights (Claude Code Status Light) is an open-source macOS menu bar app that turns each Claude Code session into a small colored status light, so you can tell at a glance whether Claude Code is working, waiting for input, idle, offline, or errored — without switching windows.
+
+### Which terminals does it support?
+
+Clicking a light returns you to the right session in **Terminal.app, iTerm2, Ghostty, and cmux**. Terminal.app and iTerm2 are matched by TTY, cmux via the `cmux://` deep link, and Ghostty by working directory.
+
+### Does it work with Claude Code hooks?
+
+Yes. On first launch CC Lights installs its `cc-lights` CLI and adds the Claude Code hooks to `~/.claude/settings.json` automatically (a backup is made first). The hooks call `cc-lights` on each lifecycle event, so the lights update in real time. Restart Claude Code once after the initial setup.
+
+### Does CC Lights show a Dock icon?
+
+No — it runs as a menu bar accessory app. It only shows a Dock icon while the Preferences window is open, then hides it again when you close the window.
+
+### Where is Claude Code session state stored?
+
+In per-session JSON files under `~/Library/Application Support/ClaudeCodeStatusLight/sessions/`. The app watches that folder and updates lights live, and the CLI writes to it — there is no background server.
+
+### How do I install it?
+
+Build from source with `make bundle` (or `make dmg` for a drag-to-Applications installer), then move `CC Lights.app` to `/Applications`. See [Quick start](#quick-start). Requires macOS 11+ and Swift 5.9+.
+
+### Is it free and open source?
+
+Yes. CC Lights is a Swift Package Manager project you can build, audit, and modify yourself.
 
 ## Development
 

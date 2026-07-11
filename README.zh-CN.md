@@ -1,26 +1,36 @@
-# Claude Code Status Light
+<div align="center">
 
-<p align="center">
-  <img src="Resources/AppIcon.png" width="128" alt="CC Lights logo" />
-</p>
+# CC Lights
 
-<p align="center">
-  <a href="README.md">English</a> · <b>中文</b>
-</p>
+### Claude Code 的状态栏红绿灯 —— 一眼看清每个会话的状态
 
-Claude Code Status Light 是一个 macOS 状态栏红绿灯 App。它通过监控本地 session 状态文件，实时显示一个或多个 Claude Code session 的当前状态。
+<img src="Resources/AppIcon.png" width="120" alt="CC Lights —— macOS 上的 Claude Code 状态灯" />
 
-这个项目主要解决的问题是：当 Claude Code 在终端或编辑器里运行时，开发者不需要频繁切回窗口查看它到底是在工作、等待输入、空闲、离线，还是遇到了错误。
+[![Platform: macOS 11+](https://img.shields.io/badge/platform-macOS%2011%2B-black?logo=apple)](https://www.apple.com/macos/)
+[![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
+[![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#功能概览)
+[![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
+
+[English](README.md) · **中文**
+
+</div>
+
+**Claude Code Status Light**（**CC Lights**）是一款轻量的 **macOS 状态栏 App**，把一个或多个 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** 会话的实时状态显示为状态栏上的**红绿灯**——工作/空闲为绿色，需要你操作时变黄，出错变红，无会话时为灰色。
+
+让 Claude Code 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、离线还是出错**。点击某个灯即可切回对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 会话。状态由 **Claude Code hooks** 通过内置的 `cc-lights` 命令行工具驱动更新。
 
 ## 功能概览
 
-- 每个 Claude Code session 在状态栏显示一个独立圆形灯。
-- 使用交通灯颜色和动画表达当前状态。
-- 可在偏好设置的「通用」分页切换默认圆形灯和像素风格状态灯。
-- 鼠标悬停可查看 session 名称/目录、终端、状态、任务/消息和最后更新时间。
-- 点击状态灯可回到对应的终端窗口或标签页。
-- 提供 `cc-lights` 命令行工具，便于 Claude Code hooks 或手动命令更新状态。
-- 所有 session 状态都存储在本地 JSON 文件中。
+- **每会话独立状态灯** —— 每个 Claude Code session 在状态栏各显示一个圆形灯。
+- **交通灯语义** —— 用颜色和动画一眼看清状态：工作中绿色呼吸、等待你操作时黄色常亮、出错时红色闪烁、离线为灰色。
+- **点击直达** —— 一键切回对应的 Terminal.app、iTerm2、Ghostty 或 cmux 会话。
+- **原生系统通知** —— 会话需要决策或发生 API 错误时立即通知你。
+- **零配置接入 Claude Code hooks** —— 首次启动自动安装 `cc-lights` 并写好 `~/.claude/settings.json`（先备份）。
+- **偏好设置窗口** —— 参考 macOS 系统设置 / Shottr 风格，集中管理登录启动、灯样式、通知与集成。
+- **圆形灯或像素风格** —— 在偏好设置中切换，选择会持久保存。
+- **多会话感知** —— 多个并行会话各有一个灯，并按优先级汇总（`error` > `waiting` > `working` > `idle` > `offline`）。
+- **本地优先** —— 状态存于 Application Support 下的 JSON 文件；无后台服务、无账号、无遥测。
+- **小巧 CLI** —— `cc-lights` 供 hooks 或手动命令更新状态。
 
 ## 状态模型
 
@@ -230,6 +240,36 @@ cc-lights remove --session "$CLAUDE_SESSION_ID"
 ```
 
 在 Claude Code 中，以 `!` 开头的命令会直接在终端执行。
+
+## 常见问题（FAQ）
+
+### CC Lights 是什么？
+
+CC Lights（Claude Code Status Light）是一款开源的 macOS 状态栏 App，把每个 Claude Code 会话变成一个彩色状态灯，让你无需切换窗口就能一眼看出 Claude Code 是在工作、等待输入、空闲、离线还是出错。
+
+### 支持哪些终端？
+
+点击状态灯可切回 **Terminal.app、iTerm2、Ghostty、cmux** 中对应的会话。Terminal.app 与 iTerm2 按 TTY 定位，cmux 走 `cmux://` 深链接，Ghostty 按工作目录匹配。
+
+### 能配合 Claude Code hooks 吗？
+
+可以。首次启动时 CC Lights 会自动安装 `cc-lights` 并把 Claude Code hooks 写入 `~/.claude/settings.json`（会先备份）。hooks 在每个生命周期事件调用 `cc-lights`，灯色即时更新。首次配置后请重启一次 Claude Code。
+
+### CC Lights 会显示 Dock 图标吗？
+
+平时不会——它以状态栏 accessory 模式运行；只有打开「偏好设置」窗口时才临时显示 Dock 图标，关闭后再次隐藏。
+
+### Claude Code 会话状态存在哪里？
+
+存在 `~/Library/Application Support/ClaudeCodeStatusLight/sessions/` 下、每个会话一个 JSON 文件。App 监控该目录实时更新灯色，CLI 负责写入，二者不依赖后台服务。
+
+### 如何安装？
+
+用 `make bundle` 从源码打包（或 `make dmg` 生成安装镜像），再把 `CC Lights.app` 拖到 `/Applications`。详见[快速开始](#快速开始)。需要 macOS 11+ 与 Swift 5.9+。
+
+### 是否免费开源？
+
+是。CC Lights 是一个 Swift Package Manager 项目，你可以自行构建、审阅和修改。
 
 ## 开发
 
