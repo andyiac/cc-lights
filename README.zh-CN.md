@@ -2,7 +2,7 @@
 
 # CC Lights
 
-### Claude Code 的状态栏红绿灯 —— 一眼看清每个会话的状态
+### 菜单栏上的 Claude Code 红绿灯 — 瞄一眼就知道每场会话是在工作、等你、还是报错，点一下直接跳过去
 
 <img src="Resources/AppIcon.png" width="120" alt="CC Lights —— macOS 上的 Claude Code 状态灯" />
 

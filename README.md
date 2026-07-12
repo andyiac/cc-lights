@@ -2,7 +2,7 @@
 
 # CC Lights
 
-### Menu bar traffic lights for Claude Code — see every session's status at a glance
+### Traffic lights for Claude Code in your menu bar — glance to see if each session is working, waiting, or errored; click to jump straight there
 
 <img src="Resources/AppIcon.png" width="120" alt="CC Lights — Claude Code Status Light for macOS" />
 
