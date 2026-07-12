@@ -22,7 +22,9 @@ Keep Claude Code running in your terminal or editor and stop switching back just
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=yQwQsnS-PSc">
-    <img src="https://img.youtube.com/vi/yQwQsnS-PSc/maxresdefault.jpg" alt="CC Lights: Claude Code status at a glance — click the light, jump to the session." width="720">
+
+  <img width="800" height="450" alt="Image" src="https://github.com/user-attachments/assets/556f9fb2-14b1-4435-911c-88f48b4a2f24" />
+  
   </a>
 </p>
 
