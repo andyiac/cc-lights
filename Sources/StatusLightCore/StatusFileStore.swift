@@ -79,6 +79,7 @@ public enum StatusFileStore {
         // 否则只在某个 hook（如 SessionStart）捕获一次的 TTY 会被随后的 working/idle 抹掉。
         if let existing = try? readPayload(at: sessionFileURL(for: payload.sessionID)) {
             payload.terminalTTY = payload.terminalTTY ?? existing.terminalTTY
+            payload.terminalPID = payload.terminalPID ?? existing.terminalPID
             payload.terminalBundleIdentifier = payload.terminalBundleIdentifier ?? existing.terminalBundleIdentifier
             payload.cmuxWorkspaceID = payload.cmuxWorkspaceID ?? existing.cmuxWorkspaceID
             payload.cmuxSurfaceID = payload.cmuxSurfaceID ?? existing.cmuxSurfaceID
@@ -104,6 +105,7 @@ public enum StatusFileStore {
         workingDirectory: String? = nil,
         terminalBundleIdentifier: String? = nil,
         terminalTTY: String? = nil,
+        terminalPID: Int? = nil,
         cmuxWorkspaceID: String? = nil,
         cmuxSurfaceID: String? = nil,
         cmuxSocketPath: String? = nil
@@ -116,6 +118,7 @@ public enum StatusFileStore {
                 workingDirectory: workingDirectory,
                 terminalBundleIdentifier: terminalBundleIdentifier,
                 terminalTTY: terminalTTY,
+                terminalPID: terminalPID,
                 cmuxWorkspaceID: cmuxWorkspaceID,
                 cmuxSurfaceID: cmuxSurfaceID,
                 cmuxSocketPath: cmuxSocketPath

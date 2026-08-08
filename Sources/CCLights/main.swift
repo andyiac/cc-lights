@@ -27,6 +27,7 @@ struct ParsedCommand {
     var workingDirectory: String?
     var terminalBundleIdentifier: String?
     var terminalTTY: String?
+    var terminalPID: Int?
     var cmuxWorkspaceID: String?
     var cmuxSurfaceID: String?
     var cmuxSocketPath: String?
@@ -44,6 +45,7 @@ func parse(arguments: [String]) throws -> ParsedCommand {
     var workingDirectory: String?
     var terminalBundleIdentifier: String?
     var terminalTTY: String?
+    var terminalPID: Int?
     var cmuxWorkspaceID: String?
     var cmuxSurfaceID: String?
     var cmuxSocketPath: String?
@@ -94,6 +96,12 @@ func parse(arguments: [String]) throws -> ParsedCommand {
             }
             terminalTTY = arguments[index + 1]
             index += 2
+        case "--terminal-pid":
+            guard index + 1 < arguments.count else {
+                throw CommandError.missingValue(argument)
+            }
+            terminalPID = Int(arguments[index + 1])
+            index += 2
         case "--cmux-workspace":
             guard index + 1 < arguments.count else {
                 throw CommandError.missingValue(argument)
@@ -126,6 +134,7 @@ func parse(arguments: [String]) throws -> ParsedCommand {
         workingDirectory: workingDirectory,
         terminalBundleIdentifier: terminalBundleIdentifier,
         terminalTTY: terminalTTY,
+        terminalPID: terminalPID,
         cmuxWorkspaceID: cmuxWorkspaceID,
         cmuxSurfaceID: cmuxSurfaceID,
         cmuxSocketPath: cmuxSocketPath
@@ -135,12 +144,12 @@ func parse(arguments: [String]) throws -> ParsedCommand {
 func usage() -> String {
     """
     用法:
-      cc-lights idle [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-lights offline [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-lights working [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-lights waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-lights error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
-      cc-lights reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径]
+      cc-lights idle [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--terminal-pid PID] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights offline [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--terminal-pid PID] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights working [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--terminal-pid PID] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights waiting [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--terminal-pid PID] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights error [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--terminal-pid PID] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径] [--message 文本] [--task 任务名]
+      cc-lights reset [--session ID] [--cwd 路径] [--title 名称] [--terminal-bundle ID] [--tty TTY] [--terminal-pid PID] [--cmux-workspace ID] [--cmux-surface ID] [--cmux-socket 路径]
       cc-lights remove [--session ID]
       cc-lights show [--session ID]
       cc-lights path [--session ID]
@@ -261,6 +270,16 @@ func resolvedTerminalTTY(from parsed: ParsedCommand) -> String? {
     return currentTTY()
 }
 
+/// 宿主终端模拟器进程的 PID。多个副本共用同一 bundle id（如复制出的多个 Ghostty.app）时，
+/// 只有进程 PID 能区分具体实例，App 侧据此精确激活对应窗口。
+func resolvedTerminalPID(from parsed: ParsedCommand) -> Int? {
+    if let terminalPID = parsed.terminalPID {
+        return terminalPID
+    }
+
+    return terminalEmulatorPIDFromProcessTree().map(Int.init)
+}
+
 func resolvedCmuxWorkspaceID(from parsed: ParsedCommand) -> String? {
     if let cmuxWorkspaceID = parsed.cmuxWorkspaceID?.trimmingCharacters(in: .whitespacesAndNewlines),
        !cmuxWorkspaceID.isEmpty {
@@ -344,6 +363,30 @@ private func ttyFromProcessTree() -> String? {
     return nil
 }
 
+/// 沿父进程链向上定位 GUI 终端模拟器进程（如 Ghostty）的 pid。
+/// 进程链形如 cc-lights → [脱离终端的 shell] → claude(ttysNNN) → login(ttysNNN) → ghostty(无 tty)。
+/// 终端模拟器是「带 tty 的进程区段」正上方那个失去控制终端的祖先，即最顶层 tty 进程的父进程。
+/// 注意不能取「第一个无 tty 的祖先」：hook 常经由脱离终端的中间 shell 启动，那层也无 tty 但并非模拟器。
+private func terminalEmulatorPIDFromProcessTree() -> Int32? {
+    var pid = getppid()
+    var sawTTY = false
+    // 最多向上 16 层，覆盖 shell/login 等中间层，同时避免极端情况下的无限循环。
+    for _ in 0..<16 {
+        guard pid > 1 else { break }
+        guard let (ppid, tty) = psInfo(pid: pid) else { break }
+        if tty != nil {
+            sawTTY = true
+        } else if sawTTY {
+            // 已越过 tty 进程区段后遇到的第一个无 tty 祖先，即终端模拟器进程。
+            return pid
+        }
+        // 尚未见到 tty 就遇到的无 tty 祖先（如 hook 的中间 shell）跳过，继续向上找。
+        guard let ppid, ppid != pid else { break }
+        pid = ppid
+    }
+    return nil
+}
+
 /// 读取进程的父 pid 与控制终端；tty 为 "??"/"?"（无控制终端）时返回 nil。
 private func psInfo(pid: Int32) -> (ppid: Int32?, tty: String?)? {
     let process = Process()
@@ -397,6 +440,7 @@ do {
             workingDirectory: resolvedWorkingDirectory(from: parsed),
             terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
             terminalTTY: terminalTTY,
+            terminalPID: resolvedTerminalPID(from: parsed),
             cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: parsed),
             cmuxSurfaceID: resolvedCmuxSurfaceID(from: parsed),
             cmuxSocketPath: resolvedCmuxSocketPath(from: parsed)
@@ -415,6 +459,7 @@ do {
             workingDirectory: resolvedWorkingDirectory(from: parsed),
             terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
             terminalTTY: terminalTTY,
+            terminalPID: resolvedTerminalPID(from: parsed),
             cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: parsed),
             cmuxSurfaceID: resolvedCmuxSurfaceID(from: parsed),
             cmuxSocketPath: resolvedCmuxSocketPath(from: parsed)

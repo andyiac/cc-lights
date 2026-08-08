@@ -9,6 +9,8 @@ public struct StatusPayload: Codable, Equatable {
     public var workingDirectory: String?
     public var terminalBundleIdentifier: String?
     public var terminalTTY: String?
+    /// 宿主终端模拟器进程的 PID。用于区分 bundle id 相同的多个副本（如复制出的多个 Ghostty.app）。
+    public var terminalPID: Int?
     public var cmuxWorkspaceID: String?
     public var cmuxSurfaceID: String?
     public var cmuxSocketPath: String?
@@ -23,6 +25,7 @@ public struct StatusPayload: Codable, Equatable {
         workingDirectory: String? = nil,
         terminalBundleIdentifier: String? = nil,
         terminalTTY: String? = nil,
+        terminalPID: Int? = nil,
         cmuxWorkspaceID: String? = nil,
         cmuxSurfaceID: String? = nil,
         cmuxSocketPath: String? = nil,
@@ -36,6 +39,7 @@ public struct StatusPayload: Codable, Equatable {
         self.workingDirectory = workingDirectory
         self.terminalBundleIdentifier = terminalBundleIdentifier
         self.terminalTTY = terminalTTY
+        self.terminalPID = terminalPID
         self.cmuxWorkspaceID = cmuxWorkspaceID
         self.cmuxSurfaceID = cmuxSurfaceID
         self.cmuxSocketPath = cmuxSocketPath
@@ -63,6 +67,7 @@ public struct StatusPayload: Codable, Equatable {
         case workingDirectory
         case terminalBundleIdentifier
         case terminalTTY
+        case terminalPID
         case cmuxWorkspaceID
         case cmuxSurfaceID
         case cmuxSocketPath
@@ -86,6 +91,7 @@ public struct StatusPayload: Codable, Equatable {
         }
         terminalBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .terminalBundleIdentifier)
         terminalTTY = try container.decodeIfPresent(String.self, forKey: .terminalTTY)
+        terminalPID = try container.decodeIfPresent(Int.self, forKey: .terminalPID)
         cmuxWorkspaceID = try container.decodeIfPresent(String.self, forKey: .cmuxWorkspaceID)
         cmuxSurfaceID = try container.decodeIfPresent(String.self, forKey: .cmuxSurfaceID)
         cmuxSocketPath = try container.decodeIfPresent(String.self, forKey: .cmuxSocketPath)

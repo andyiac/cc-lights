@@ -97,6 +97,7 @@ final class StatusPayloadTests: XCTestCase {
             sessionTitle: "我的会话",
             terminalBundleIdentifier: "com.mitchellh.ghostty",
             terminalTTY: "/dev/ttys009",
+            terminalPID: 34761,
             cmuxWorkspaceID: "workspace-1",
             cmuxSurfaceID: "surface-1",
             cmuxSocketPath: "/tmp/cmux.sock"
@@ -108,6 +109,7 @@ final class StatusPayloadTests: XCTestCase {
         let merged = try XCTUnwrap(StatusFileStore.readSession(sessionID))
         XCTAssertEqual(merged.state, .idle)
         XCTAssertEqual(merged.terminalTTY, "/dev/ttys009")
+        XCTAssertEqual(merged.terminalPID, 34761)
         XCTAssertEqual(merged.terminalBundleIdentifier, "com.mitchellh.ghostty")
         XCTAssertEqual(merged.cmuxWorkspaceID, "workspace-1")
         XCTAssertEqual(merged.cmuxSurfaceID, "surface-1")

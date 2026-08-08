@@ -715,11 +715,27 @@ final class StatusBarController: NSObject {
         return true
     }
 
-    /// Ghostty 按 working directory 匹配终端 surface 并 focus；命中后再激活 App 确保置于最前。
-    /// 局限：同一目录有多个 session 时只能命中第一个。
+    /// Ghostty 聚焦分三级降级。多个 Ghostty 副本共用同一 bundle id，故用宿主进程 PID 定位到具体副本：
+    /// 1) 在该副本内按工作目录 `focus` 到对应 surface（tab 级，需自动化权限）；
+    /// 2) 退化为仅精确激活该副本（无需自动化权限，权限被拒或匹配不到 surface 时兜底）；
+    /// 3) 老数据无 PID / PID 失效时，脚本化 LaunchServices 认定的 canonical 副本按工作目录聚焦。
+    /// 局限：同一副本内多个 surface 工作目录相同时只能命中第一个。
     private func focusGhosttySession(for payload: StatusPayload) -> Bool {
         guard isApplicationRunning(bundleIdentifier: "com.mitchellh.ghostty") else {
             return false
+        }
+
+        if let terminalPID = payload.terminalPID,
+           let app = NSRunningApplication(processIdentifier: pid_t(terminalPID)) {
+            if let appPath = app.bundleURL?.path,
+               let workingDirectory = payload.workingDirectory, !workingDirectory.isEmpty,
+               runAppleScript(ghosttyFocusScript(appPath: appPath, workingDirectory: workingDirectory)) {
+                return true
+            }
+
+            if app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) {
+                return true
+            }
         }
 
         guard let workingDirectory = payload.workingDirectory, !workingDirectory.isEmpty else {
@@ -788,6 +804,23 @@ final class StatusBarController: NSObject {
         tell application "Ghostty"
             repeat with aTerminal in terminals
                 if working directory of aTerminal is "\(appleScriptEscaped(workingDirectory))" then
+                    focus aTerminal
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+        """
+    }
+
+    /// 按 .app 路径精确定位某个 Ghostty 副本（区分共用 bundle id 的多个副本），
+    /// 在其中按工作目录聚焦对应 surface 并把该副本带到最前。
+    private func ghosttyFocusScript(appPath: String, workingDirectory: String) -> String {
+        """
+        tell application "\(appleScriptEscaped(appPath))"
+            repeat with aTerminal in terminals
+                if working directory of aTerminal is "\(appleScriptEscaped(workingDirectory))" then
+                    activate
                     focus aTerminal
                     return true
                 end if
