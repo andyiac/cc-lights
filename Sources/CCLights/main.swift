@@ -1,6 +1,36 @@
 import Foundation
 import StatusLightCore
 
+/// codex (OpenAI) hook 通过 stdin 传入的 JSON。codex hooks 与 Claude Code 不同：
+/// 上下文全部在 stdin JSON 里（无 CLAUDE_* 环境变量），关键字段见下。
+struct CodexHookInput {
+    var sessionID: String?
+    var cwd: String?
+    var hookEventName: String?
+}
+
+/// 读取挂在 stdin 上的 codex hook JSON；stdin 是交互终端时返回 nil（正常 CLI 用法）。
+func readCodexHookInputFromStdin() -> CodexHookInput? {
+    guard isatty(STDIN_FILENO) == 0 else {
+        return nil
+    }
+
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    guard !data.isEmpty,
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+
+    return CodexHookInput(
+        sessionID: (json["session_id"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+        cwd: (json["cwd"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+        hookEventName: (json["hook_event_name"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    )
+}
+
 enum CommandError: LocalizedError {
     case missingCommand
     case unknownCommand(String)
@@ -31,6 +61,12 @@ struct ParsedCommand {
     var cmuxWorkspaceID: String?
     var cmuxSurfaceID: String?
     var cmuxSocketPath: String?
+}
+
+extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }
 
 func parse(arguments: [String]) throws -> ParsedCommand {
@@ -153,6 +189,16 @@ func usage() -> String {
       cc-lights remove [--session ID]
       cc-lights show [--session ID]
       cc-lights path [--session ID]
+      cc-lights hook <state> [--message 文本]
+
+     状态 state（来自 codex hook 事件）:
+      hook working    # SessionStart / UserPromptSubmit / PreToolUse / PostToolUse
+      hook waiting    # PermissionRequest
+      hook idle       # Stop
+      hook error      # StopFailure
+      hook remove     # SessionEnd
+     说明: hook 模式的 stdin 必须是 codex 传入的 JSON（含 session_id / cwd）。
+     无 stdin 时回退到普通参数解析（--session / --cwd）。
     """
 }
 
@@ -422,66 +468,96 @@ private func psInfo(pid: Int32) -> (ppid: Int32?, tty: String?)? {
 }
 
 do {
-    let parsed = try parse(arguments: Array(CommandLine.arguments.dropFirst()))
+    var arguments = Array(CommandLine.arguments.dropFirst())
+    let isHookMode = arguments.first == "hook"
+    if isHookMode {
+        arguments.removeFirst()
+    }
 
-    switch parsed.command {
+    let parsed = try parse(arguments: arguments)
+    let codexHook = isHookMode ? readCodexHookInputFromStdin() : nil
+
+    // codex 上下文全部走 stdin JSON：session_id / cwd 合并进解析结果，
+    // 命令行显式传入的 --session / --cwd 优先级更高。
+    var effective = parsed
+    if let codexHook {
+        if effective.sessionID == nil, let sessionID = codexHook.sessionID {
+            effective.sessionID = sessionID
+        }
+        if effective.workingDirectory == nil, let cwd = codexHook.cwd {
+            effective.workingDirectory = cwd
+        }
+    }
+
+    // hook 模式静默：codex 把 stdout 纯文本当作额外上下文注入（污染对话），
+    // Stop 事件则必须输出合法 JSON（`{"continue":true}`）。
+    func emit(_ message: String) {
+        if !isHookMode {
+            print(message)
+        }
+    }
+
+    switch effective.command {
     case "idle", "offline", "working", "waiting", "error":
-        guard let state = StatusState(rawValue: parsed.command) else {
-            throw CommandError.unknownCommand(parsed.command)
+        guard let state = StatusState(rawValue: effective.command) else {
+            throw CommandError.unknownCommand(effective.command)
         }
 
-        let terminalTTY = resolvedTerminalTTY(from: parsed)
+        let terminalTTY = resolvedTerminalTTY(from: effective)
         let payload = StatusPayload(
             state: state,
-            message: parsed.message,
-            taskName: parsed.taskName,
-            sessionID: resolvedSessionID(from: parsed, terminalTTY: terminalTTY),
-            sessionTitle: parsed.sessionTitle,
-            workingDirectory: resolvedWorkingDirectory(from: parsed),
-            terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
+            message: effective.message,
+            taskName: effective.taskName,
+            sessionID: resolvedSessionID(from: effective, terminalTTY: terminalTTY),
+            sessionTitle: effective.sessionTitle,
+            workingDirectory: resolvedWorkingDirectory(from: effective),
+            terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: effective),
             terminalTTY: terminalTTY,
-            terminalPID: resolvedTerminalPID(from: parsed),
-            cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: parsed),
-            cmuxSurfaceID: resolvedCmuxSurfaceID(from: parsed),
-            cmuxSocketPath: resolvedCmuxSocketPath(from: parsed)
+            terminalPID: resolvedTerminalPID(from: effective),
+            cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: effective),
+            cmuxSurfaceID: resolvedCmuxSurfaceID(from: effective),
+            cmuxSocketPath: resolvedCmuxSocketPath(from: effective)
         )
         try StatusFileStore.write(payload)
-        print("已更新为：\(state.displayName)（\(payload.displayTitle)）")
+        emit("已更新为：\(state.displayName)（\(payload.displayTitle)）")
+        if isHookMode, codexHook?.hookEventName == "Stop" {
+            print(#"{"continue":true}"#)
+        }
     case "remove":
-        let sessionID = resolvedSessionID(from: parsed, terminalTTY: resolvedTerminalTTY(from: parsed))
+        let sessionID = resolvedSessionID(from: effective, terminalTTY: resolvedTerminalTTY(from: effective))
         let removed = try StatusFileStore.removeSession(sessionID)
-        print(removed ? "已移除 session：\(sessionID)" : "session 不存在：\(sessionID)")
+        emit(removed ? "已移除 session：\(sessionID)" : "session 不存在：\(sessionID)")
     case "reset":
-        let terminalTTY = resolvedTerminalTTY(from: parsed)
+        let terminalTTY = resolvedTerminalTTY(from: effective)
         try StatusFileStore.reset(
-            sessionID: resolvedSessionID(from: parsed, terminalTTY: terminalTTY),
-            sessionTitle: parsed.sessionTitle,
-            workingDirectory: resolvedWorkingDirectory(from: parsed),
-            terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: parsed),
+            sessionID: resolvedSessionID(from: effective, terminalTTY: terminalTTY),
+            sessionTitle: effective.sessionTitle,
+            workingDirectory: resolvedWorkingDirectory(from: effective),
+            terminalBundleIdentifier: resolvedTerminalBundleIdentifier(from: effective),
             terminalTTY: terminalTTY,
-            terminalPID: resolvedTerminalPID(from: parsed),
-            cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: parsed),
-            cmuxSurfaceID: resolvedCmuxSurfaceID(from: parsed),
-            cmuxSocketPath: resolvedCmuxSocketPath(from: parsed)
+            terminalPID: resolvedTerminalPID(from: effective),
+            cmuxWorkspaceID: resolvedCmuxWorkspaceID(from: effective),
+            cmuxSurfaceID: resolvedCmuxSurfaceID(from: effective),
+            cmuxSocketPath: resolvedCmuxSocketPath(from: effective)
         )
-        print("已重置为：\(StatusState.idle.displayName)")
+        emit("已重置为：\(StatusState.idle.displayName)")
     case "show":
-        if let sessionID = parsed.sessionID {
+        if let sessionID = effective.sessionID {
             if let payload = try StatusFileStore.readSession(sessionID) {
                 try printPayload(payload)
             } else {
-                print("尚未写入此 session 状态。")
+                emit("尚未写入此 session 状态。")
             }
         } else {
             let payloads = try StatusFileStore.readAllSessions()
             if payloads.isEmpty {
-                print("尚未写入状态。")
+                emit("尚未写入状态。")
             } else {
                 try printPayloads(payloads)
             }
         }
     case "path":
-        if let sessionID = parsed.sessionID {
+        if let sessionID = effective.sessionID {
             print(StatusFileStore.sessionFileURL(for: sessionID).path)
         } else {
             print(StatusFileStore.sessionsDirectoryURL.path)
@@ -489,7 +565,7 @@ do {
     case "help", "--help", "-h":
         print(usage())
     default:
-        throw CommandError.unknownCommand(parsed.command)
+        throw CommandError.unknownCommand(effective.command)
     }
 } catch {
     fputs("\(error.localizedDescription)\n\n\(usage())\n", stderr)

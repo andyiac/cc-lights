@@ -2,23 +2,24 @@
 
 # CC Lights
 
-### 菜单栏上的 Claude Code 红绿灯 — 瞄一眼就知道每场会话是在工作、等你、还是报错，点一下直接跳过去
+### 菜单栏上的 Claude Code / Codex / OpenCode 红绿灯 — 瞄一眼就知道每场会话是在工作、等你、还是报错，点一下直接跳过去
 
-<img src="Resources/AppIcon.png" width="120" alt="CC Lights —— macOS 上的 Claude Code 状态灯" />
+<img src="Resources/AppIcon.png" width="120" alt="CC Lights —— macOS 上的 AI 编码状态灯" />
 
 [![Platform: macOS 11+](https://img.shields.io/badge/platform-macOS%2011%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
 [![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#功能概览)
 [![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
+[![Also works with Codex & OpenCode](https://img.shields.io/badge/also-Codex%20%26%20OpenCode-blue)](#多agent-集成)
 [![Download .dmg](https://img.shields.io/badge/download-.dmg-blue?logo=apple&logoColor=white)](https://github.com/andyiac/cc-lights/releases/latest)
 
 [English](README.md) · **中文**
 
 </div>
 
-**Claude Code Status Light**（**CC Lights**）是一款轻量的 **macOS 状态栏 App**，把一个或多个 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** 会话的实时状态显示为状态栏上的**红绿灯**——工作/空闲为绿色，需要你操作时变黄，出错变红，无会话时为灰色。
+**CC Lights**（**Claude Code Status Light**）是一款轻量的 **macOS 状态栏 App**，把一个或多个 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**、**[Codex](https://developers.openai.com/codex/)** 、**[OpenCode](https://opencode.ai)** 会话的实时状态显示为状态栏上的**红绿灯**——工作/空闲为绿色，需要你操作时变黄，出错变红，无会话时为灰色。
 
-让 Claude Code 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、离线还是出错**。**点击某个灯，即可立刻切到那个正等你处理的会话**——精确定位到对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 标签页 / 窗口 / 面板。状态由 **Claude Code hooks** 通过内置的 `cc-lights` 命令行工具驱动更新。
+让 AI 编码 agent 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、还是出错**。**点击某个灯，即可立刻切到那个正等你处理的会话**——精确跳转到对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 标签页 / 窗口 / 面板。状态由 **Claude Code / Codex hooks** 与 **OpenCode 插件**，通过内置的 `cc-lights` 命令行工具驱动更新。
 
 
 <p align="center">
@@ -32,7 +33,7 @@
 ## ⭐ 一键回到需要你处理的会话
 
 > [!TIP]
-> **当某个灯变黄（等待你的输入）或变红（出错）时，点一下它，CC Lights 就把那个 Claude Code 会话立刻切到最前。** 再也不用在一堆终端窗口和标签页里翻找到底是哪个在等你确认。
+> **当某个灯变黄（等待你的输入）或变红（出错）时，点一下它，CC Lights 就把那个会话立刻切到最前。** 再也不用在一堆终端窗口和标签页里翻找到底是哪个在等你确认。
 
 - 🟡 **等待决策** → 点击黄灯 → 直接落到那个等你批准、选择或输入的提示上。
 - 🔴 **出错** → 点击红灯 → 直接跳到出错的会话。
@@ -41,10 +42,11 @@
 ## 功能概览
 
 - **一键切回目标会话** —— 点击任意灯，即可 focus 到它对应的 Terminal.app、iTerm2、Ghostty 或 cmux 标签页 / 窗口 / 面板；尤其适合第一时间处理正在等你输入的会话。
-- **每会话独立状态灯** —— 每个 Claude Code session 在状态栏各显示一个圆形灯。
+- **每会话独立状态灯** —— 每个 agent session 在状态栏各显示一个圆形灯。
+- **支持多 agent** —— Claude Code（hooks）、Codex（hooks）、OpenCode（插件）都能驱动状态灯。
 - **交通灯语义** —— 用颜色和动画一眼看清状态：工作中绿色呼吸、等待你操作时黄色常亮、出错时红色闪烁、离线为灰色。
 - **原生系统通知** —— 会话需要决策或发生 API 错误时立即通知你。
-- **零配置接入 Claude Code hooks** —— 首次启动自动安装 `cc-lights` 并写好 `~/.claude/settings.json`（先备份）。
+- **零配置集成** —— 首次启动自动安装 `cc-lights` 并写好 `~/.claude/settings.json`、`~/.codex/hooks.json` 与 `~/.config/opencode/plugins/cc-lights.js` 插件（均先备份）。
 - **偏好设置窗口** —— 参考 macOS 系统设置 / Shottr 风格，集中管理登录启动、灯样式、通知与集成。
 - **圆形灯或像素风格** —— 在偏好设置中切换，选择会持久保存。
 - **多会话感知** —— 多个并行会话各有一个灯，并按优先级汇总（`error` > `waiting` > `working` > `idle` > `offline`）。
@@ -55,10 +57,10 @@
 
 | | 灯色 | 状态值 | 红绿灯指示 | 含义 |
 | :---: | --- | --- | --- | --- |
-| ⚪ | 灰色 | `offline` | 无活跃会话 | 没有可跟踪的 Claude Code session，或 session 已退出。 |
-| 🟢 | 绿色闪烁 | `working` | 绿灯表示 Claude Code 正在运行 | Claude Code 正在自动执行任务，不需要用户干预。 |
-| 🟡 | 黄色常亮，30 秒未响应后黄色慢呼吸 | `waiting` | 黄灯表示需要用户注意 | Claude Code 需要用户授权、确认、选择或输入。 |
-| 🟢 | 绿色常亮 | `idle` | 绿灯表示可继续使用 | 有 Claude Code session，且当前空闲或上次任务已正常完成。 |
+| ⚪ | 灰色 | `offline` | 无活跃会话 | 没有可跟踪的 agent session，或 session 已退出。 |
+| 🟢 | 绿色闪烁 | `working` | 绿灯表示正在运行 | agent 正在自动执行任务，不需要用户干预。 |
+| 🟡 | 黄色常亮，30 秒未响应后黄色慢呼吸 | `waiting` | 黄灯表示需要用户注意 | agent 需要用户授权、确认、选择或输入。 |
+| 🟢 | 绿色常亮 | `idle` | 绿灯表示可继续使用 | 有 agent session，且当前空闲或上次任务已正常完成。 |
 | 🔴 | 红色，初次变红时短暂闪烁 | `error` | 红灯表示 API 层错误 | 这一轮对话因 API 错误中断，例如限流、认证失败、额度或服务器错误。 |
 
 `working` 与 `idle` 都是绿色，通过呼吸动画区分；`waiting` 使用黄色，避免与空闲/完成混淆。红灯只表示 API 层错误，不表示普通 shell 命令或工具执行失败。
@@ -102,7 +104,7 @@ make install
 - `cc-lights` - 命令行工具，也可用 `swift run cc-lights`
 - `CC-Lights-<版本>.dmg` - 拖拽到 Applications 的安装镜像（执行 `make dmg` 后生成）
 
-启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 Claude Code session。App 平时以 accessory 模式运行，不会显示 Dock 图标；打开「偏好设置」窗口时会临时切换到 regular 模式，在 Dock 中显示应用图标，关闭窗口后重新隐藏。灯样式可在偏好设置中切换为像素风格，选择会在下次启动时保留。
+启动后，菜单栏会出现一个圆形状态灯。默认灰色表示尚未检测到 agent session。App 平时以 accessory 模式运行，不会显示 Dock 图标；打开「偏好设置」窗口时会临时切换到 regular 模式，在 Dock 中显示应用图标，关闭窗口后重新隐藏。灯样式可在偏好设置中切换为像素风格，选择会在下次启动时保留。
 
 ## 使用方法
 
@@ -110,14 +112,14 @@ make install
 
 | 操作 | 行为 |
 | --- | --- |
-| 左键点击某个灯 | 直接回到该灯对应的 Claude Code 终端 session。 |
+| 左键点击某个灯 | 直接回到该灯对应的 agent 终端 session。 |
 | 悬停某个灯 | 显示 session 名称/目录、终端、状态、任务/消息和最后更新时间。 |
 | 右键点击某个灯 | 打开菜单（含「偏好设置…」入口）。 |
 | 按住 Option 后左键点击 | 打开同一个菜单。 |
 
 ### 多 session 状态灯
 
-每个 Claude Code session 会在状态栏显示一个独立圆形灯，不显示文字。灯色和动画表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会回到正在运行该 Claude Code session 的终端窗口或标签页：
+每个 agent session 会在状态栏显示一个独立圆形灯，不显示文字。灯色和动画表示该 session 的当前状态；鼠标悬停可查看详情，左键点击会回到正在运行该 session 的终端窗口或标签页：
 
 - iTerm2 / Terminal.app：按终端 TTY 精确定位窗口或标签页。
 - cmux：通过 `cmux://` 深链接按 workspace 和 surface 精确定位面板。
@@ -133,7 +135,7 @@ make install
 | 重置此 session 为绿灯 | 将右键点击的 session 重置为 `idle`。 |
 | 清除所有错误 | 将所有红灯 session 重置为 `idle`。 |
 | 偏好设置… | 打开偏好设置窗口（⌘,），并在 Dock 中显示应用图标。 |
-| 打开 Claude Code 上下文 | 切回当前选中 session 所属的终端 App/面板。 |
+| 打开 agent 上下文 | 切回当前选中 session 所属的终端 App/面板。 |
 | 退出 | 退出 App，会二次确认。 |
 
 ### 偏好设置窗口
@@ -144,7 +146,7 @@ make install
 | --- | --- |
 | 通用 | 「登录时自动启动」开关；状态灯样式（圆形灯 / 像素风格）切换并实时预览。 |
 | 通知 | 「启用系统通知」开关，在 session 进入等待决策或出错时提醒。 |
-| 集成 | Claude Code Hook 配置状态，并提供「自动配置 Hook」「重新检查」「打开 settings.json」。 |
+| 集成 | 各 agent（Claude Code / Codex / OpenCode）的配置状态，并提供「自动配置 Hook」「重新检查」「打开配置」。 |
 | 关于 | 应用图标、名称、版本与简介。 |
 
 ## 使用 CLI 更新状态
@@ -169,6 +171,12 @@ cc-lights reset
 # 移除某个 session 的灯
 cc-lights remove --session "$CLAUDE_SESSION_ID"
 
+# codex / opencode hooks 的简写形式：从 stdin JSON（codex）或 CLI 参数读取 session_id / cwd
+cc-lights hook working   # SessionStart / UserPromptSubmit / PreToolUse / PostToolUse
+cc-lights hook waiting   # PermissionRequest
+cc-lights hook idle      # Stop
+cc-lights hook remove    # SessionEnd
+
 # 查看状态
 cc-lights show
 cc-lights show --session "$CLAUDE_SESSION_ID"
@@ -176,6 +184,8 @@ cc-lights path
 ```
 
 未打包时，用 `swift run cc-lights` 代替 `cc-lights`。
+
+> `hook` 子命令会读取 codex hook 的 stdin JSON（包含 `session_id`、`cwd`、`hook_event_name`），并抑制正常输出，避免 JSON 被注入 agent 上下文。`Stop` 事件会打印 `{"continue":true}`，满足 codex 的要求。
 
 ### CLI 选项
 
@@ -239,9 +249,15 @@ App 自动推送系统通知的场景：
 
 可在偏好设置的「通知」分页关闭通知。
 
-## 与 Claude Code 集成
+## 与编码 agent 集成
 
-推荐将 `cc-lights` 与 Claude Code hooks 结合，自动更新状态：
+支持三种 agent，均可自动配置：
+
+- **Claude Code** —— 通过 `~/.claude/settings.json` 的 hooks。
+- **Codex** —— 通过 `~/.codex/hooks.json` 的 hooks（session_id / cwd 经 stdin JSON 传入）。
+- **OpenCode** —— 通过 `~/.config/opencode/plugins/cc-lights.js` 插件。OpenCode 没有 CLI hooks，插件订阅会话事件（`session.created`、`session.status`、`session.idle`、`session.error`、`session.deleted`、`permission.updated`）后调用内置的 `cc-lights`。
+
+推荐将 `cc-lights` 与 agent hooks 结合，自动更新状态：
 
 ```bash
 # 任务开始或工具执行前
@@ -256,11 +272,19 @@ cc-lights idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "
 # API 层错误导致本轮中断
 cc-lights error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "请求失败"
 
-# Claude Code session 退出
+# agent session 退出
 cc-lights remove --session "$CLAUDE_SESSION_ID"
+
+# Codex hooks 通过 stdin JSON 读取 session_id / cwd（无需环境变量）
+cc-lights hook working   # SessionStart / UserPromptSubmit / PreToolUse / PostToolUse
+cc-lights hook waiting   # PermissionRequest
+cc-lights hook idle      # Stop
+cc-lights hook remove    # SessionEnd
 ```
 
-也可以在 Claude Code 会话中按需手动调用：
+首次启动时 App 会自动安装 `cc-lights` 并为三个 agent 写好配置（各文件均先备份），之后重启一次对应 agent 即可：`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.config/opencode/plugins/cc-lights.js`。你也可以随时在「偏好设置 → 集成」里重新执行「自动配置」。
+
+CI/CD 或自定义场景中，也可以在 agent 会话里按需手动调用：
 
 ```bash
 !cc-lights working --task "重构用户模块"
@@ -276,15 +300,15 @@ cc-lights remove --session "$CLAUDE_SESSION_ID"
 
 ### CC Lights 是什么？
 
-CC Lights（Claude Code Status Light）是一款开源的 macOS 状态栏 App，把每个 Claude Code 会话变成一个彩色状态灯，让你无需切换窗口就能一眼看出 Claude Code 是在工作、等待输入、空闲、离线还是出错。
+CC Lights（Claude Code Status Light）是一款开源的 macOS 状态栏 App，把每个 Claude Code / Codex / OpenCode 会话变成一个彩色状态灯，让你无需切换窗口就能一眼看出 agent 是在工作、等待输入、空闲、离线还是出错。
 
 ### 支持哪些终端？
 
 点击状态灯可切回 **Terminal.app、iTerm2、Ghostty、cmux** 中对应的会话。Terminal.app 与 iTerm2 按 TTY 定位，cmux 走 `cmux://` 深链接，Ghostty 按工作目录匹配。
 
-### 能配合 Claude Code hooks 吗？
+### 能配合编码 agent 的 hooks / 插件吗？
 
-可以。首次启动时 CC Lights 会自动安装 `cc-lights` 并把 Claude Code hooks 写入 `~/.claude/settings.json`（会先备份）。hooks 在每个生命周期事件调用 `cc-lights`，灯色即时更新。首次配置后请重启一次 Claude Code。
+可以。首次启动时 CC Lights 会自动安装 `cc-lights` 并写入 Claude Code hooks（`~/.claude/settings.json`）、Codex hooks（`~/.codex/hooks.json`）与 OpenCode 插件（`~/.config/opencode/plugins/cc-lights.js`），各自先备份。hooks / 插件在每个生命周期事件调用 `cc-lights`，灯色即时更新。首次配置后请重启一次对应 agent。
 
 ### CC Lights 会显示 Dock 图标吗？
 

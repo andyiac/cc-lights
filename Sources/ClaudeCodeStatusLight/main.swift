@@ -7,7 +7,7 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
     private var statusFileMonitor: StatusFileMonitor?
-    private var configMonitor: ClaudeCodeConfigMonitor?
+    private var integrationsConfigMonitor: IntegrationsConfigMonitor?
     private let notificationController = NotificationController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,6 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 启动即自动落地内置 CLI 到稳定路径，并自动配置/修复 Claude Code hook（无需手动）。
         ClaudeCodeConfigChecker.setUpHooksOnLaunch()
+        // codex 与 Claude Code 同样文件化接入，自动写入 ~/.codex/hooks.json。
+        CodexConfigChecker.setUpHooksOnLaunch()
+        // opencode 无 CLI hooks，改用插件订阅会话事件，自动写入 ~/.config/opencode/plugins/。
+        OpenCodeConfigChecker.setUpOnLaunch()
 
         let monitor = StatusFileMonitor { [weak controller] payloads in
             controller?.apply(payloads)
@@ -44,10 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusFileMonitor = monitor
         monitor.start()
 
-        let configMonitor = ClaudeCodeConfigMonitor { [weak controller] configured in
-            controller?.updateHooksConfigured(configured)
+        let configMonitor = IntegrationsConfigMonitor { [weak controller] in
+            controller?.updateHooksConfigured(true)
         }
-        self.configMonitor = configMonitor
+        self.integrationsConfigMonitor = configMonitor
         configMonitor.start()
 
         // 启动后静默检查一次更新，有新版本时在右键菜单中提示。
@@ -62,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         statusFileMonitor?.stop()
-        configMonitor?.stop()
+        integrationsConfigMonitor?.stop()
     }
 
     @objc private func rebuildMainMenu() {
@@ -146,7 +150,6 @@ final class StatusBarController: NSObject {
     private let errorFlashStep: TimeInterval = 0.2
     private let errorFlashCount = 3
     private let snakeStep: TimeInterval = 0.15
-    private let snakeLoopLength = 12
     private let placeholderTag = -1
     private let cmuxDefaultBundleIdentifier = "com.cmuxterm.app"
     private var iconStyle = StatusLightStyle.current
@@ -257,7 +260,7 @@ final class StatusBarController: NSObject {
     /// 大像素方块的 working 灯用「贪吃蛇」围边行走动画（逐帧换图），而非 alpha 脉动。
     private func usesSnakeAnimation(for payload: StatusPayload) -> Bool {
         guard payload.state == .working else { return false }
-        return resolvedStyle(for: payload) == .pixelBlock
+        return resolvedStyle(for: payload).isPixelBlockStyle
     }
 
     private func startStatusAnimation() {
@@ -283,8 +286,9 @@ final class StatusBarController: NSObject {
                     }
 
                     if self.usesSnakeAnimation(for: payload) {
-                        let headCell = Int(elapsed / self.snakeStep) % self.snakeLoopLength
-                        button.image = StatusIcon.pixelBlockSnakeImage(for: payload.state, headCell: headCell)
+                        let style = self.resolvedStyle(for: payload)
+                        let headCell = Int(elapsed / self.snakeStep) % style.pixelBlockSnakeLoopLength
+                        button.image = StatusIcon.pixelBlockSnakeImage(for: payload.state, style: style, headCell: headCell)
                         button.alphaValue = 1.0
                         hasAnimation = true
                         continue
@@ -732,7 +736,7 @@ final class StatusBarController: NSObject {
 
     func updateHooksConfigured(_ configured: Bool) {
         DispatchQueue.main.async {
-            self.preferencesWindowController?.updateHookStatus(configured)
+            self.preferencesWindowController?.refreshIntegrationStatuses()
         }
     }
 
@@ -1039,6 +1043,7 @@ enum StatusLightStyle: String, CaseIterable {
     case pixelRobot
     case pixelCat
     case pixelBlock
+    case pixelBlock3x3
 
     private static let defaultsKey = "statusLightStyle"
 
@@ -1077,11 +1082,23 @@ enum StatusLightStyle: String, CaseIterable {
             return Loc.lightStylePixelCat
         case .pixelBlock:
             return Loc.lightStylePixelBlock
+        case .pixelBlock3x3:
+            return Loc.lightStylePixelBlock3x3
         }
     }
 
     // 所有样式都占用方形宽度。
     var statusItemLength: CGFloat { NSStatusItem.squareLength }
+
+    /// 是否为带「贪吃蛇」动画的大像素块样式。
+    var isPixelBlockStyle: Bool {
+        self == .pixelBlock || self == .pixelBlock3x3
+    }
+
+    /// 该大像素块样式围边行走路径的格数。
+    var pixelBlockSnakeLoopLength: Int {
+        StatusIcon.blockSnakeLoopLength(for: self)
+    }
 }
 
 /// 每个 session 可单独覆盖灯样式；未设置时回落到全局默认 `StatusLightStyle.current`。
@@ -1131,6 +1148,8 @@ enum StatusIcon {
             return pixelSpriteImage(rows: catSprite, for: state)
         case .pixelBlock:
             return pixelBlockImage(for: state)
+        case .pixelBlock3x3:
+            return pixelBlock3x3Image(for: state)
         }
     }
 
@@ -1469,7 +1488,28 @@ enum StatusIcon {
         [true, true, true, true]
     ]
 
+    /// 3×3 大像素块。
+    private static let block3x3Mask = [
+        [true, true, true],
+        [true, true, true],
+        [true, true, true]
+    ]
+
     private static func pixelBlockImage(for state: StatusState) -> NSImage {
+        blockImage(for: state, mask: blockMask, pitch: 4, cell: 3)
+    }
+
+    private static func pixelBlock3x3Image(for state: StatusState) -> NSImage {
+        blockImage(for: state, mask: block3x3Mask, pitch: 5, cell: 4)
+    }
+
+    /// 静态大像素块的通用绘制。3×3 用稍大的 pitch/cell 以填满同样的 18pt 图标。
+    private static func blockImage(
+        for state: StatusState,
+        mask: [[Bool]],
+        pitch: CGFloat,
+        cell: CGFloat
+    ) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()
 
@@ -1477,47 +1517,57 @@ enum StatusIcon {
         context?.shouldAntialias = false
         context?.imageInterpolation = .none
 
-        let color = pixelColor(for: state)
-        let rows = blockMask.count
-        let cols = 4
-        let pitch: CGFloat = 4
-        let cell: CGFloat = 3
+        let rows = mask.count
+        let cols = mask[0].count
         let total = CGFloat(cols) * pitch
         let origin = NSPoint(x: (18 - total) / 2, y: (18 - total) / 2)
 
         // 大像素块本体（每格之间留 1px 空隙，pixel 分得更清）
-        color.setFill()
-        for row in 0..<rows {
-            for column in 0..<cols where maskCell(blockMask, row, column) {
-                blockCellRect(
-                    row: row,
-                    column: column,
-                    origin: origin,
-                    pitch: pitch,
-                    cell: cell
-                ).fill()
-            }
-        }
+        pixelColor(for: state).setFill()
+        fillBlock(mask, rows: rows, cols: cols, origin: origin, pitch: pitch, cell: cell)
 
         image.unlockFocus()
         image.isTemplate = false
         return image
     }
 
-    /// 大像素格的位置：以 pitch 为步进、每格实际占用 `cell`，从而在格于之间留出空隙。
+    /// 大像素格的位置：以 pitch 为步长、每格实际占用 `cell`，从而在格与格之间留出空隙。
     private static func blockCellRect(
         row: Int,
         column: Int,
+        rows: Int,
         origin: NSPoint,
         pitch: CGFloat,
         cell: CGFloat
     ) -> NSRect {
         NSRect(
             x: origin.x + CGFloat(column) * pitch,
-            y: origin.y + CGFloat(blockMask.count - 1 - row) * pitch,
+            y: origin.y + CGFloat(rows - 1 - row) * pitch,
             width: cell,
             height: cell
         )
+    }
+
+    private static func fillBlock(
+        _ mask: [[Bool]],
+        rows: Int,
+        cols: Int,
+        origin: NSPoint,
+        pitch: CGFloat,
+        cell: CGFloat
+    ) {
+        for row in 0..<rows {
+            for column in 0..<cols where maskCell(mask, row, column) {
+                blockCellRect(
+                    row: row,
+                    column: column,
+                    rows: rows,
+                    origin: origin,
+                    pitch: pitch,
+                    cell: cell
+                ).fill()
+            }
+        }
     }
 
     /// 大像素方块四周的「贪吃蛇」行走路径：沿 4×4 方块外圈顺时针走一圈，每步都是正交相邻格子。
@@ -1528,12 +1578,28 @@ enum StatusIcon {
         (2, 0), (1, 0)
     ]
 
-    /// 贪吃蛇身体格数（含蛇头）。
-    private static let blockSnakeLength = 4
+    /// 3×3 方块四周的「贪吃蛇」行走路径：沿外圈顺时针走一圈（共 8 格）。
+    private static let block3x3SnakeLoop: [(row: Int, column: Int)] = [
+        (0, 0), (0, 1), (0, 2),
+        (1, 2), (2, 2),
+        (2, 1), (2, 0),
+        (1, 0)
+    ]
 
-    /// 大像素块「贪吃蛇」围边行走的一帧。`headCell` 为蛇头所在的路径格序号（0..<blockSnakeLoop.count）。
+    static func blockSnakeLoopLength(for style: StatusLightStyle) -> Int {
+        switch style {
+        case .pixelBlock:
+            return blockSnakeLoop.count
+        case .pixelBlock3x3:
+            return block3x3SnakeLoop.count
+        default:
+            return 0
+        }
+    }
+
+    /// 大像素块「贪吃蛇」围边行走的一帧。`headCell` 为蛇头所在的路径格序号（0..<snakeLoop.count）。
     /// 蛇头最亮，身体逐格变暗，尾巴淡入暗色底块，看起来像一条蛇绕方块转圈。
-    static func pixelBlockSnakeImage(for state: StatusState, headCell: Int) -> NSImage {
+    static func pixelBlockSnakeImage(for state: StatusState, style: StatusLightStyle, headCell: Int) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()
 
@@ -1542,39 +1608,62 @@ enum StatusIcon {
         context?.imageInterpolation = .none
 
         let color = pixelColor(for: state)
-        let rows = blockMask.count
-        let cols = 4
-        let pitch: CGFloat = 4
-        let cell: CGFloat = 3
+
+        let mask: [[Bool]]
+        let loop: [(row: Int, column: Int)]
+        let length: Int
+        let pitch: CGFloat
+        let cell: CGFloat
+        let rows: Int
+        let cols: Int
+
+        switch style {
+        case .pixelBlock:
+            mask = blockMask
+            loop = blockSnakeLoop
+            length = 4
+            pitch = 4
+            cell = 3
+            rows = blockMask.count
+            cols = 4
+        case .pixelBlock3x3:
+            mask = block3x3Mask
+            loop = block3x3SnakeLoop
+            length = 3
+            pitch = 5
+            cell = 4
+            rows = block3x3Mask.count
+            cols = 3
+        default:
+            mask = blockMask
+            loop = blockSnakeLoop
+            length = 4
+            pitch = 4
+            cell = 3
+            rows = blockMask.count
+            cols = 4
+        }
+
         let total = CGFloat(cols) * pitch
         let origin = NSPoint(x: (18 - total) / 2, y: (18 - total) / 2)
 
         // 底块（压暗，让行走的蛇突显出来），每格之间留 1px 空隙
         let base = color.blended(withFraction: 0.30, of: .black) ?? color
         base.setFill()
-        for row in 0..<rows {
-            for column in 0..<cols where maskCell(blockMask, row, column) {
-                blockCellRect(
-                    row: row,
-                    column: column,
-                    origin: origin,
-                    pitch: pitch,
-                    cell: cell
-                ).fill()
-            }
-        }
+        fillBlock(mask, rows: rows, cols: cols, origin: origin, pitch: pitch, cell: cell)
 
         // 蛇身：从蛇头到尾巴逐渐压暗
-        let loopCount = blockSnakeLoop.count
-        for offset in 0..<blockSnakeLength {
+        let loopCount = loop.count
+        for offset in 0..<length {
             let index = ((headCell - offset) % loopCount + loopCount) % loopCount
-            let snakeCell = blockSnakeLoop[index]
-            let t = CGFloat(offset) / CGFloat(blockSnakeLength - 1)
+            let snakeCell = loop[index]
+            let t = CGFloat(offset) / CGFloat(length - 1)
             let segment = color.blended(withFraction: 0.28 * t, of: .black) ?? color
             segment.setFill()
             blockCellRect(
                 row: snakeCell.row,
                 column: snakeCell.column,
+                rows: rows,
                 origin: origin,
                 pitch: pitch,
                 cell: cell
@@ -1877,14 +1966,20 @@ enum CmuxClaudeSessionStore {
 }
 
 /// 监听 ~/.claude 目录变化，实时反馈 hook 是否已配置（盯目录而非文件，兼容编辑器的原子替换）。
-final class ClaudeCodeConfigMonitor {
-    private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.ConfigMonitor")
-    private let onChange: (Bool) -> Void
-    private var source: DispatchSourceFileSystemObject?
-    private let directoryURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude")
+/// 监视各工具配置目录（~/.claude、~/.codex、~/.config/opencode/plugins），
+/// 任一变化都触发一次回调（刷新「集成」分页三块状态）。
+final class IntegrationsConfigMonitor {
+    private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.IntegrationsMonitor")
+    private let onChange: () -> Void
+    private var sources: [DispatchSourceFileSystemObject] = []
+    private let directoryURLs: [URL] = [
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude"),
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex"),
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/opencode/plugins")
+    ]
 
-    init(onChange: @escaping (Bool) -> Void) {
+    init(onChange: @escaping () -> Void) {
         self.onChange = onChange
     }
 
@@ -1897,63 +1992,59 @@ final class ClaudeCodeConfigMonitor {
 
     func stop() {
         queue.async {
-            self.cancelCurrentSource()
+            self.cancelAllSources()
         }
     }
 
     private func startMonitoring() {
-        cancelCurrentSource()
+        cancelAllSources()
 
-        let fileDescriptor = open(directoryURL.path, O_EVTONLY)
-        guard fileDescriptor >= 0 else {
-            queue.asyncAfter(deadline: .now() + 2.0) {
-                self.startMonitoring()
+        for directoryURL in directoryURLs {
+            let fileDescriptor = open(directoryURL.path, O_EVTONLY)
+            guard fileDescriptor >= 0 else {
+                continue // 目录尚不存在（如未安装相应工具时），跳过；配置写入后再重启会补上。
             }
-            return
-        }
 
-        let newSource = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
-            eventMask: [.write, .delete, .rename, .revoke],
-            queue: queue
-        )
+            let newSource = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fileDescriptor,
+                eventMask: [.write, .delete, .rename, .revoke],
+                queue: queue
+            )
 
-        newSource.setEventHandler { [weak self] in
-            self?.handleEvent()
-        }
-        newSource.setCancelHandler {
-            close(fileDescriptor)
-        }
+            newSource.setEventHandler { [weak self] in
+                self?.handleEvent()
+            }
+            newSource.setCancelHandler {
+                close(fileDescriptor)
+            }
 
-        source = newSource
-        newSource.resume()
+            sources.append(newSource)
+            newSource.resume()
+        }
     }
 
     private func handleEvent() {
-        let events = source?.data ?? []
-        let shouldRestart = events.contains(.delete) || events.contains(.rename) || events.contains(.revoke)
+        notifyState()
 
-        if shouldRestart {
-            cancelCurrentSource()
-            queue.asyncAfter(deadline: .now() + 0.1) {
-                self.notifyState()
-                self.startMonitoring()
-            }
-        } else {
-            notifyState()
+        // 若任一被监视目录被删除（工具改路径/卸载），需要重启监视：简单起见每次事件后
+        // 都重建监视源，保证目录重建后能继续工作。
+        cancelAllSources()
+        queue.asyncAfter(deadline: .now() + 0.1) {
+            self.startMonitoring()
         }
     }
 
     private func notifyState() {
-        let configured = ClaudeCodeConfigChecker.isHooksConfigured()
         DispatchQueue.main.async {
-            self.onChange(configured)
+            self.onChange()
         }
     }
 
-    private func cancelCurrentSource() {
-        source?.cancel()
-        source = nil
+    private func cancelAllSources() {
+        for source in sources {
+            source.cancel()
+        }
+        sources.removeAll()
     }
 }
 
@@ -2331,7 +2422,7 @@ enum ClaudeCodeConfigChecker {
 
     /// hook 里写入的 cc-lights 命令：优先用稳定托管路径（与 App 名/位置无关），
     /// 其次用 App 内置副本，最后退回裸命令（开发环境）。带引号兼容路径含空格。
-    private static func statusctlCommand() -> String {
+    static func statusctlCommand() -> String {
         if let url = installManagedCLI() ?? existingManagedCLIURL() {
             return "\"\(url.path)\""
         }
@@ -2467,6 +2558,426 @@ enum ClaudeCodeConfigChecker {
             candidates.append(executableDirectory.appendingPathComponent("cc-lights", isDirectory: false))
         }
         return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+}
+
+// MARK: - Codex 集成
+
+/// 管理 codex (OpenAI) 的 hooks.json 配置。codex 与 Claude Code 不同：
+/// hook 上下文全部走 stdin JSON（`session_id`/`cwd`/`hook_event_name`），无 CLAUDE_* 环境变量。
+enum CodexConfigChecker {
+    private static let codexHooksURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/hooks.json")
+
+    /// 供偏好设置「集成」分页打开/定位配置文件使用。
+    static var hooksFileURL: URL { codexHooksURL }
+
+    private static let hasAutoConfiguredKey = "hasAutoConfiguredCodexHooks"
+
+    /// 启动时幂等配置 codex hooks：
+    /// - 已配置：把命令刷新为稳定路径。
+    /// - 未配置且首次运行：自动写入（无需用户手动）。
+    static func setUpHooksOnLaunch() {
+        guard codexSeemsInstalled() else {
+            return
+        }
+        _ = ClaudeCodeConfigChecker.installManagedCLI()
+
+        let firstRun = !UserDefaults.standard.bool(forKey: hasAutoConfiguredKey)
+        UserDefaults.standard.set(true, forKey: hasAutoConfiguredKey)
+
+        if isHooksConfigured() {
+            _ = try? installHooks()
+            return
+        }
+
+        guard firstRun else { return }
+
+        if (try? installHooks()) == true {
+            notifyAutoConfigured()
+        }
+    }
+
+    /// codex 是否可能已安装：~/.codex 存在即可（安装路径不固定，可能不在 PATH 上）。
+    static func codexSeemsInstalled() -> Bool {
+        let codexDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex", isDirectory: true)
+        return FileManager.default.fileExists(atPath: codexDirectory.path)
+    }
+
+    private static func notifyAutoConfigured() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = Loc.codexAutoConfiguredTitle
+            alert.informativeText = Loc.codexAutoConfiguredBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        }
+    }
+
+    /// 用户从菜单手动检查（每次都弹结果）。
+    static func check() {
+        let configured = isHooksConfigured()
+        let alert = NSAlert()
+        alert.alertStyle = configured ? .informational : .warning
+        alert.messageText = configured ? Loc.codexHookConfiguredTitle : Loc.codexHookNotConfiguredTitle
+        alert.informativeText = configured
+            ? Loc.codexHookConfiguredBody
+            : Loc.codexHookNotConfiguredBody
+        if !configured {
+            alert.addButton(withTitle: Loc.autoConfigureButton)
+        }
+        alert.addButton(withTitle: Loc.buttonOK)
+        if !configured, alert.runModal() == .alertFirstButtonReturn {
+            installHooksWithUI()
+        }
+    }
+
+    static func isHooksConfigured() -> Bool {
+        guard let data = try? Data(contentsOf: codexHooksURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] as? [String: Any] else {
+            return false
+        }
+
+        let requiredHooks: Set<String> = ["SessionStart", "Stop"]
+        let configuredHooks = Set(hooks.keys)
+        return requiredHooks.isSubset(of: configuredHooks)
+    }
+
+    enum ConfigError: LocalizedError {
+        case invalidHooks
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidHooks:
+                return Loc.codexInvalidHooksError
+            }
+        }
+    }
+
+    /// 把状态灯 hook 安全合并进 hooks.json：只追加自己的分组、不动用户已有配置、写前备份。
+    @discardableResult
+    static func installHooks() throws -> Bool {
+        let url = codexHooksURL
+        let fileManager = FileManager.default
+        let fileExists = fileManager.fileExists(atPath: url.path)
+
+        var root: [String: Any] = [:]
+        if fileExists {
+            let data = try Data(contentsOf: url)
+            if !data.isEmpty {
+                guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    throw ConfigError.invalidHooks
+                }
+                root = parsed
+            }
+        }
+
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+
+        let cli = ClaudeCodeConfigChecker.statusctlCommand()
+
+        // codex 事件 → cc-lights hook 子命令。
+        // 命令里不传 session/cwd：codex 会把 JSON 放在 stdin，CLI 自己解析。
+        let entries: [(event: String, command: String)] = [
+            ("SessionStart", "\(cli) hook working"),
+            ("UserPromptSubmit", "\(cli) hook working"),
+            ("PreToolUse", "\(cli) hook working"),
+            ("PostToolUse", "\(cli) hook working"),
+            ("PermissionRequest", "\(cli) hook waiting"),
+            ("Stop", "\(cli) hook idle"),
+            ("SessionEnd", "\(cli) hook remove")
+        ]
+
+        var changed = false
+        for entry in entries {
+            var groups = hooks[entry.event] as? [[String: Any]] ?? []
+            let newGroup: [String: Any] = [
+                "hooks": [["type": "command", "command": entry.command]]
+            ]
+
+            // 替换本 App 之前写入的同 event 的 cc-lights 分组（可能来自旧配置），保留用户其它 hook。
+            if let index = groups.firstIndex(where: { group in
+                ((group["hooks"] as? [[String: Any]])?
+                    .contains { (($0["command"] as? String) ?? "").contains("cc-lights")
+                        || (($0["command"] as? String) ?? "").contains("cc-statusctl") } ?? false)
+            }) {
+                let existingCommand = (groups[index]["hooks"] as? [[String: Any]])?
+                    .first?["command"] as? String
+                if existingCommand == entry.command {
+                    continue
+                }
+                groups[index] = newGroup
+            } else {
+                groups.append(newGroup)
+            }
+
+            hooks[entry.event] = groups
+            changed = true
+        }
+
+        guard changed else {
+            return false
+        }
+
+        root["hooks"] = hooks
+
+        if fileExists {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let backupURL = url.deletingLastPathComponent()
+                .appendingPathComponent("hooks.json.bak-\(formatter.string(from: Date()))")
+            try fileManager.copyItem(at: url, to: backupURL)
+        } else {
+            try fileManager.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
+
+        let outData = try JSONSerialization.data(
+            withJSONObject: root,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try outData.write(to: url, options: .atomic)
+        return true
+    }
+
+    static func installHooksWithUI() {
+        do {
+            let didChange = try installHooks()
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = didChange ? Loc.codexHooksWrittenTitle : Loc.codexHookConfiguredTitle
+            alert.informativeText = didChange ? Loc.codexHooksMergedBody : Loc.hooksNoChangeBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        } catch {
+            NSAlert.showError(title: Loc.writeConfigFailedTitle, message: error.localizedDescription)
+        }
+    }
+}
+
+// MARK: - OpenCode 集成
+
+/// 管理 opencode 的状态灯插件。opencode 没有 CLI hooks，只能通过 JS/TS 插件
+/// 订阅会话事件；插件文件放在全局插件目录 `~/.config/opencode/plugins/`，
+/// opencode 启动时自动加载。插件调用托管 CLI 同步状态。
+enum OpenCodeConfigChecker {
+    private static let opencodeConfigDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".config/opencode", isDirectory: true)
+    private static let pluginsDirectory = opencodeConfigDirectory
+        .appendingPathComponent("plugins", isDirectory: true)
+    private static let pluginFileName = "cc-lights.js"
+
+    static var pluginFileURL: URL {
+        pluginsDirectory.appendingPathComponent(pluginFileName, isDirectory: false)
+    }
+
+    private static let hasAutoConfiguredKey = "hasAutoConfiguredOpenCodePlugin"
+
+    static func setUpOnLaunch() {
+        guard opencodeSeemsInstalled() else {
+            return
+        }
+        _ = ClaudeCodeConfigChecker.installManagedCLI()
+
+        let firstRun = !UserDefaults.standard.bool(forKey: hasAutoConfiguredKey)
+        UserDefaults.standard.set(true, forKey: hasAutoConfiguredKey)
+
+        if isConfigured() {
+            _ = try? installPlugin()
+            return
+        }
+
+        guard firstRun else { return }
+
+        if (try? installPlugin()) == true {
+            notifyAutoConfigured()
+        }
+    }
+
+    /// opencode 是否可能已安装：二进制常位于 ~/.opencode/bin/opencode（PATH 上）。
+    static func opencodeSeemsInstalled() -> Bool {
+        let candidates = [
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".opencode/bin/opencode", isDirectory: false),
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".local/bin/opencode", isDirectory: false)
+        ]
+        let fileManager = FileManager.default
+        if candidates.contains(where: { fileManager.isExecutableFile(atPath: $0.path) }) {
+            return true
+        }
+        return fileManager.fileExists(atPath: opencodeConfigDirectory.path)
+    }
+
+    private static func notifyAutoConfigured() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = Loc.opencodeAutoConfiguredTitle
+            alert.informativeText = Loc.opencodeAutoConfiguredBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        }
+    }
+
+    static func check() {
+        let configured = isConfigured()
+        let alert = NSAlert()
+        alert.alertStyle = configured ? .informational : .warning
+        alert.messageText = configured ? Loc.opencodeConfiguredTitle : Loc.opencodeNotConfiguredTitle
+        alert.informativeText = configured ? Loc.opencodeConfiguredBody : Loc.opencodeNotConfiguredBody
+        if !configured {
+            alert.addButton(withTitle: Loc.autoConfigureButton)
+        }
+        alert.addButton(withTitle: Loc.buttonOK)
+        if !configured, alert.runModal() == .alertFirstButtonReturn {
+            installPluginWithUI()
+        }
+    }
+
+    static func isConfigured() -> Bool {
+        guard let current = try? String(contentsOf: pluginFileURL, encoding: .utf8) else {
+            return false
+        }
+        let cliPath = managedCLIPath()
+        // 已安装且指向当前托管 CLI 路径才算已配置（路径变了需刷新）。
+        return current.contains(cliPath)
+    }
+
+    enum InstallError: LocalizedError {
+        case writeFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .writeFailed(let reason):
+                return reason
+            }
+        }
+    }
+
+    /// 生成并幂等写入 opencode 插件文件。返回是否真正写入了改动。
+    @discardableResult
+    static func installPlugin() throws -> Bool {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: pluginsDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let content = pluginSource(cliPath: managedCLIPath())
+
+        let url = pluginFileURL
+        if let existing = try? String(contentsOf: url, encoding: .utf8),
+           existing == content {
+            return false
+        }
+
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        return true
+    }
+
+    /// 插件内 Bun.spawn 需要的裸路径（不带 shell 引号，argv 数组不经过 shell）。
+    private static func managedCLIPath() -> String {
+        if let url = ClaudeCodeConfigChecker.existingManagedCLIURL() ?? bundledStatusctlURL() {
+            return url.path
+        }
+        return "cc-lights"
+    }
+
+    private static func bundledStatusctlURL() -> URL? {
+        let fileManager = FileManager.default
+        var candidates: [URL] = []
+        if let resourceURL = Bundle.main.resourceURL {
+            candidates.append(resourceURL.appendingPathComponent("cc-lights", isDirectory: false))
+        }
+        if let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent() {
+            candidates.append(executableDirectory.appendingPathComponent("cc-lights", isDirectory: false))
+        }
+        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+
+    static func installPluginWithUI() {
+        do {
+            let didChange = try installPlugin()
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = didChange ? Loc.opencodePluginWrittenTitle : Loc.opencodeConfiguredTitle
+            alert.informativeText = didChange ? Loc.opencodePluginWrittenBody : Loc.hooksNoChangeBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        } catch {
+            NSAlert.showError(title: Loc.writeConfigFailedTitle, message: error.localizedDescription)
+        }
+    }
+
+    /// 生成插件源码。插件导出异步初始化函数返回 hook 集合；通过 `event` hook
+    /// 订阅所有事件，按事件类型映射到 cc-lights 状态。CLI 路径在安装时内嵌。
+    static func pluginSource(cliPath: String) -> String {
+        """
+        // CC Lights status plugin for opencode.
+        // Generated by CC Lights — do not edit manually; the app rewrites this file on each launch.
+        // It maps opencode session events to the CC Lights status via the bundled CLI.
+        const CLI = \(String(reflecting: cliPath));
+
+        function run(args) {
+          try {
+            const proc = Bun.spawn([CLI, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+            proc.exited.catch(() => {});
+          } catch (_e) {
+            // Never let a status sync failure break opencode.
+          }
+        }
+
+        export const CCLightsPlugin = async ({ directory }) => {
+          return {
+            event: async ({ event }) => {
+              const props = event.properties || {};
+              switch (event.type) {
+                case "session.created":
+                  if (props.info?.id) {
+                    run(["working", "--session", props.info.id, "--cwd", props.info.directory || directory]);
+                  }
+                  break;
+                case "session.status":
+                  if (props.sessionID && (props.status?.type === "busy" || props.status?.type === "retry")) {
+                    run(["working", "--session", props.sessionID, "--cwd", directory]);
+                  }
+                  break;
+                case "session.idle":
+                  if (props.sessionID) {
+                    run(["idle", "--session", props.sessionID, "--cwd", directory]);
+                  }
+                  break;
+                case "session.error":
+                  if (props.sessionID) {
+                    run(["error", "--session", props.sessionID, "--cwd", directory]);
+                  }
+                  break;
+                case "session.deleted":
+                  if (props.info?.id) {
+                    run(["remove", "--session", props.info.id]);
+                  }
+                  break;
+                case "permission.updated":
+                  if (props.sessionID) {
+                    run(["waiting", "--session", props.sessionID, "--cwd", directory]);
+                  }
+                  break;
+                case "tool.execute.before":
+                  if (props.sessionID) {
+                    run(["working", "--session", props.sessionID, "--cwd", directory]);
+                  }
+                  break;
+              }
+            },
+          };
+        };
+        """
     }
 }
 

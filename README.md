@@ -2,23 +2,24 @@
 
 # CC Lights
 
-### Traffic lights for Claude Code in your menu bar — glance to see if each session is working, waiting, or errored; click to jump straight there
+### Traffic lights for Claude Code, Codex, and OpenCode in your menu bar — glance to see if each session is working, waiting, or errored; click to jump straight there
 
-<img src="Resources/AppIcon.png" width="120" alt="CC Lights — Claude Code Status Light for macOS" />
+<img src="Resources/AppIcon.png" width="120" alt="CC Lights — AI Coding Status Light for macOS" />
 
 [![Platform: macOS 11+](https://img.shields.io/badge/platform-macOS%2011%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
 [![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#features)
 [![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
+[![Also works with Codex & OpenCode](https://img.shields.io/badge/also-Codex%20%26%20OpenCode-blue)](#integrating-with-coding-agents)
 [![Download .dmg](https://img.shields.io/badge/download-.dmg-blue?logo=apple&logoColor=white)](https://github.com/andyiac/cc-lights/releases/latest)
 
 **English** · [中文](README.zh-CN.md)
 
 </div>
 
-**Claude Code Status Light** (**CC Lights**) is a lightweight **macOS menu bar app** that shows the live status of one or more **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** sessions as small, color-coded **traffic lights** — green while working or idle, yellow when it needs your input, red on error, and gray when offline.
+**Claude Code Status Light** (**CC Lights**) is a lightweight **macOS menu bar app** that shows the live status of one or more **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[Codex](https://developers.openai.com/codex/)** , and **[OpenCode](https://opencode.ai)** sessions as small, color-coded **traffic lights** — green while working or idle, yellow when it needs your input, red on error, and gray when offline.
 
-Keep Claude Code running in your terminal or editor and stop switching back just to check on it: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. **Click a light to jump straight to the exact session that needs you** — the right **Terminal.app, iTerm2, Ghostty, or cmux** tab, window, or pane. Status updates are driven by **Claude Code hooks** through a tiny bundled CLI, `cc-lights`.
+Keep your AI coding agents running in your terminal or editor and stop switching back just to check on them: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. **Click a light to jump straight to the exact session that needs you** — the right **Terminal.app, iTerm2, Ghostty, or cmux** tab, window, or pane. Status updates are driven by **Claude Code / Codex hooks** and the **OpenCode plugin** through a tiny bundled CLI, `cc-lights`.
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=yQwQsnS-PSc">
@@ -31,7 +32,7 @@ Keep Claude Code running in your terminal or editor and stop switching back just
 ## ⭐ One click back to the session that needs you
 
 > [!TIP]
-> **When a light turns yellow (waiting for your input) or red (error), just click it — CC Lights instantly brings that exact Claude Code session to the front.** No more hunting through a dozen terminal windows and tabs to find which one is blocked on your approval.
+> **When a light turns yellow (waiting for your input) or red (error), just click it — CC Lights instantly brings that exact session to the front.** No more hunting through a dozen terminal windows and tabs to find which one is blocked on your approval.
 
 - 🟡 **Waiting** → click the yellow light → you land right in the prompt asking for your approval, choice, or input.
 - 🔴 **Error** → click the red light → jump straight to the session that failed.
@@ -40,10 +41,11 @@ Keep Claude Code running in your terminal or editor and stop switching back just
 ## Features
 
 - **One-click jump to the right session** — click any light to focus its Terminal.app, iTerm2, Ghostty, or cmux tab / window / pane. Perfect for pouncing on a session that is waiting for your input.
-- **Per-session status lights** — a separate menu bar light for every tracked Claude Code session.
+- **Per-session status lights** — a separate menu bar light for every tracked Claude Code / Codex / OpenCode session.
+- **Multi-agent support** — status driven by Claude Code hooks, Codex hooks, and the OpenCode plugin.
 - **Traffic-light cues** — color and animation make the state obvious at a glance: breathing green while working, solid yellow when waiting for you, flashing red on error, gray when offline.
 - **Native macOS notifications** — get notified the moment a session needs a decision or hits an API error.
-- **Zero-config Claude Code hooks** — the app installs its `cc-lights` CLI and wires up `~/.claude/settings.json` for you on first launch (with a backup).
+- **Zero-config integration** — on first launch the app installs its `cc-lights` CLI and wires up the Claude Code hooks in `~/.claude/settings.json`, Codex hooks in `~/.codex/hooks.json`, and the OpenCode plugin in `~/.config/opencode/plugins/` automatically (each with a backup).
 - **Preferences window** — a macOS System Settings / Shottr-style window for launch-at-login, light style, notifications, and integration.
 - **Round or pixel-art lights** — pick a style in Preferences; the choice is remembered across launches.
 - **Multi-session aware** — many parallel sessions each get their own light, with a priority-based summary (`error` > `waiting` > `working` > `idle` > `offline`).
@@ -54,11 +56,11 @@ Keep Claude Code running in your terminal or editor and stop switching back just
 
 | | Light | State | Traffic-light cue | Meaning |
 | :---: | --- | --- | --- | --- |
-| ⚪ | Gray | `offline` | No active session | No tracked Claude Code session exists, or the session has exited. |
-| 🟢 | Pulsing green | `working` | Green means Claude Code is running | Claude Code is actively running a task and does not need user input. |
-| 🟡 | Solid yellow, then slow pulsing yellow after 30s without a response | `waiting` | Yellow means user attention is needed | Claude Code needs user confirmation, authorization, selection, or input. |
+| ⚪ | Gray | `offline` | No active session | No tracked Claude Code / Codex / OpenCode session exists, or the sessions have exited. |
+| 🟢 | Pulsing green | `working` | Green means the agent is running | The agent is actively running a task and does not need user input. |
+| 🟡 | Solid yellow, then slow pulsing yellow after 30s without a response | `waiting` | Yellow means user attention is needed | The agent needs user confirmation, authorization, selection, or input. |
 | 🟢 | Solid green | `idle` | Green means ready | A session exists and is ready for the next prompt. |
-| 🔴 | Red, flashing briefly when it first turns red | `error` | Red means API-level failure | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
+| 🔴 | Red, flashing briefly when it first turns red. | `error` | Red means API-level failure | The current turn stopped because of an API-level failure such as rate limiting, authentication, quota, or server errors. |
 
 `working` and `idle` are both green and are distinguished by breathing animation. `waiting` is yellow so it is visually separate from idle/complete, and red is reserved for API-level failures, not for ordinary tool or shell command failures.
 
@@ -119,7 +121,7 @@ The app normally runs as a menu bar accessory app with no Dock icon. While the P
 
 | Action | Behavior |
 | --- | --- |
-| Left click a light | Focus the matching Claude Code terminal session when possible. |
+| Left click a light | Focus the matching agent terminal session when possible. |
 | Hover a light | Show session details and the latest status message. |
 | Right click a light | Open the actions menu. |
 | Option + left click | Open the same menu as right click. |
@@ -128,7 +130,7 @@ Terminal focusing is supported for Terminal.app and iTerm2 by matching the TTY. 
 
 macOS automation permission is required before the app can focus Terminal.app, iTerm2, or Ghostty through AppleScript. cmux focusing uses the `cmux://` URL scheme (opened through LaunchServices) and does not use AppleScript or the cmux socket. The first click may trigger a system permission prompt.
 
-The right-click menu contains the current session details and count, **Reset this session to green** (⌘R), **Clear all errors**, **Preferences…** (⌘,), **Open Claude Code context** (⌘O), and **Quit** (⌘Q).
+The right-click menu contains the current session details and count, **Reset this session to green** (⌘R), **Clear all errors**, **Preferences…** (⌘,), **Open agent context** (⌘O), and **Quit** (⌘Q).
 
 ## Preferences
 
@@ -138,7 +140,7 @@ Open Preferences from the right-click menu (**Preferences…**, or ⌘,). It is 
 | --- | --- |
 | General | "Launch at login" toggle; status light style (round / pixel-art) with a live preview. The choice is saved in `UserDefaults` for future launches. |
 | Notifications | "Enable system notifications" toggle. |
-| Integration | Claude Code hook configuration status, with **Auto-configure Hook**, **Re-check**, and **Open settings.json**. |
+| Integration | Configuration status for each supported agent (Claude Code / Codex / OpenCode), with **Auto-configure Hook**, **Re-check**, and **Open config**. |
 | About | App icon, name, version, and a short description. |
 
 ## Using the CLI
@@ -148,10 +150,10 @@ Open Preferences from the right-click menu (**Preferences…**, or ⌘,). It is 
 cc-lights working --task "Build project"
 cc-lights waiting --message "Approval required"
 cc-lights idle
-cc-lights offline --message "Claude Code session exited"
+cc-lights offline --message "Session exited"
 cc-lights error --message "API request failed"
 
-# Track a specific Claude Code session
+# Track a specific session
 cc-lights working \
   --session "$CLAUDE_SESSION_ID" \
   --cwd "$PWD" \
@@ -163,6 +165,12 @@ cc-lights reset
 # Remove a session light
 cc-lights remove --session "$CLAUDE_SESSION_ID"
 
+# codex / opencode hooks: a short form that reads session_id/cwd from stdin JSON (codex) or CLI args
+cc-lights hook working   # SessionStart / UserPromptSubmit / PreToolUse / PostToolUse
+cc-lights hook waiting   # PermissionRequest
+cc-lights hook idle      # Stop
+cc-lights hook remove    # SessionEnd
+
 # Inspect stored status
 cc-lights show
 cc-lights show --session "$CLAUDE_SESSION_ID"
@@ -171,13 +179,15 @@ cc-lights path
 
 When running from source, use `swift run cc-lights` instead of `cc-lights`.
 
+> The `hook` subcommand reads a codex hook JSON payload from stdin (containing `session_id`, `cwd`, `hook_event_name`) and suppresses normal output so the JSON isn't injected into the agent's context. For the `Stop` event it prints `{"continue":true}` as codex requires.
+
 ### CLI options
 
 | Option | Short | Description |
 | --- | --- | --- |
 | `--message <text>` | `-m` | Extra status message, such as an error or waiting reason. |
 | `--task <name>` | `-t` | Current task name. |
-| `--session <id>` | `-s` | Session identifier. If omitted, the CLI tries Claude Code environment variables, terminal TTY, then working directory. |
+| `--session <id>` | `-s` | Session identifier. If omitted, the CLI tries agent environment variables (Claude Code / codex), terminal TTY, then working directory. |
 | `--cwd <path>` | | Working directory for the session. |
 | `--title <name>` | | Display title shown in hover details. |
 | `--terminal-bundle <id>` | | Terminal app bundle identifier, such as `com.googlecode.iterm2`. |
@@ -219,26 +229,37 @@ The app removes stale sessions that have not been updated for more than 24 hours
 
 `idle` and `offline` are different:
 
-- `idle` / green: the Claude Code session still exists and is ready for more work.
-- `offline` / gray: no active Claude Code session exists, or the user has exited Claude Code.
+- `idle` / green: the agent session still exists and is ready for more work.
+- `offline` / gray: no active agent session exists, or the user has exited the agent.
 
 ## Notifications
 
 The app can send system notifications when:
 
-- A session enters `waiting`, meaning Claude Code needs a user decision.
+- A session enters `waiting`, meaning the agent needs a user decision.
 - A session changes to `error`, meaning the turn needs attention.
 
 Notifications can be disabled in Preferences → Notifications.
 
-## Integrating with Claude Code
+## Integrating with coding agents
+
+Session updates are driven per agent:
+
+- **Claude Code** — via hooks in `~/.claude/settings.json`.
+- **Codex** — via hooks in `~/.codex/hooks.json`.
+- **OpenCode** — via a plugin at `~/.config/opencode/plugins/cc-lights.js`.
+  OpenCode has no CLI hooks, so it subscribes to session events
+  (`session.created`, `session.status`, `session.idle`, `session.error`,
+  `session.deleted`, `permission.updated`) and calls the bundled `cc-lights` CLI.
 
 Setup is automatic. On first launch the app:
 
 1. Installs its bundled `cc-lights` helper to a stable, PATH-independent
    location: `~/Library/Application Support/ClaudeCodeStatusLight/cc-lights`.
-2. Writes the Claude Code hooks into `~/.claude/settings.json` using the
-   absolute path to that helper (backing up the file first).
+2. Writes the Claude Code hooks into `~/.claude/settings.json` (backing the
+   file up first), the Codex hooks into `~/.codex/hooks.json` (backing it up
+   first), and the OpenCode plugin into
+   `~/.config/opencode/plugins/cc-lights.js`.
 3. Symlinks the helper into a writable `PATH` directory (such as
    `/opt/homebrew/bin` or `/usr/local/bin`) as both `cc-lights` and the
    legacy name `cc-statusctl`, so even a bare-command hook from any
@@ -252,9 +273,10 @@ migrates any old `cc-statusctl` hooks to `cc-lights` and keeps a
 Because the helper path is independent of the app's display name and
 install location, renaming or moving the app does not break the hooks. On
 every launch the app refreshes the helper and repairs already-configured
-hooks to point at it (idempotent; a `settings.json.bak-*` backup is made
-only when something actually changes). So you never install the CLI by
-hand — just install the app, launch it once, and restart Claude Code.
+hooks to point at it (idempotent; a `settings.json.bak-*` / `hooks.json.bak-*`
+backup is made only when something actually changes). So you never install
+the CLI by hand — just install the app, launch it once, and restart the
+agent.
 
 You can re-run the configuration any time from **Preferences → Integration**
 (**Auto-configure Hook**).
@@ -262,24 +284,20 @@ You can re-run the configuration any time from **Preferences → Integration**
 Under the hood the hooks call `cc-lights` like this:
 
 ```bash
-# When a turn starts or before a tool runs
+# When a turn starts or before a tool runs (Claude Code)
 cc-lights working --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
 
-# When Claude Code needs a user decision
-cc-lights waiting --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "User input required"
+# Codex hooks read session_id / cwd from the JSON on stdin instead of env vars
+cc-lights hook working   # SessionStart / UserPromptSubmit / PreToolUse / PostToolUse
+cc-lights hook waiting   # PermissionRequest
+cc-lights hook idle      # Stop
+cc-lights hook remove    # SessionEnd
 
-# When a turn finishes normally
-cc-lights idle --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")"
-
-# When an API-level failure stops the turn
-cc-lights error --session "$CLAUDE_SESSION_ID" --cwd "$PWD" --title "$(basename "$PWD")" --message "Request failed"
-
-# When the session exits
-cc-lights remove --session "$CLAUDE_SESSION_ID"
+# OpenCode plugin passes sessionID / cwd explicitly
+cc-lights working --session "$OPENCODE_SESSION_ID" --cwd "$PWD"
 ```
 
-If you want to call the CLI yourself from a terminal or with `!` inside a
-Claude Code session, symlink the managed helper onto your `PATH`, for example:
+If you want to call the CLI yourself from a terminal or with `!` inside an agent session, symlink the managed helper onto your `PATH`, for example:
 
 ```bash
 ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-lights" /usr/local/bin/cc-lights
@@ -289,21 +307,21 @@ ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-lights" /usr/
 
 ### What is CC Lights?
 
-CC Lights (Claude Code Status Light) is an open-source macOS menu bar app that turns each Claude Code session into a small colored status light, so you can tell at a glance whether Claude Code is working, waiting for input, idle, offline, or errored — without switching windows.
+CC Lights (Claude Code Status Light) is an open-source macOS menu bar app that turns each Claude Code / Codex / OpenCode session into a small colored status light, so you can tell at a glance whether your agent is working, waiting for input, idle, offline, or errored — without switching windows.
 
 ### Which terminals does it support?
 
 Clicking a light returns you to the right session in **Terminal.app, iTerm2, Ghostty, and cmux**. Terminal.app and iTerm2 are matched by TTY, cmux via the `cmux://` deep link, and Ghostty by working directory.
 
-### Does it work with Claude Code hooks?
+### Does it work with agent hooks?
 
-Yes. On first launch CC Lights installs its `cc-lights` CLI and adds the Claude Code hooks to `~/.claude/settings.json` automatically (a backup is made first). The hooks call `cc-lights` on each lifecycle event, so the lights update in real time. Restart Claude Code once after the initial setup.
+Yes. On first launch CC Lights installs its `cc-lights` CLI and writes the Claude Code hooks to `~/.claude/settings.json`, the Codex hooks to `~/.codex/hooks.json`, and the OpenCode plugin to `~/.config/opencode/plugins/cc-lights.js` (each backed up first). The hooks / plugin call `cc-lights` on each lifecycle event, so the lights update in real time. Restart the agent once after the initial setup.
 
 ### Does CC Lights show a Dock icon?
 
 No — it runs as a menu bar accessory app. It only shows a Dock icon while the Preferences window is open, then hides it again when you close the window.
 
-### Where is Claude Code session state stored?
+### Where is session state stored?
 
 In per-session JSON files under `~/Library/Application Support/ClaudeCodeStatusLight/sessions/`. The app watches that folder and updates lights live, and the CLI writes to it — there is no background server.
 

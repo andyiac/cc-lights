@@ -65,9 +65,9 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         tabController.reloadSessionStyles()
     }
 
-    /// 集成状态变化时（配置监视器触发）同步刷新「集成」分页。
-    func updateHookStatus(_ configured: Bool) {
-        tabController.integrationViewController.updateStatus(configured)
+    /// 任一集成配置变化时（配置监视器触发）刷新「集成」分页三块状态。
+    func refreshIntegrationStatuses() {
+        tabController.integrationViewController.refreshAll()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -490,12 +490,23 @@ final class NotificationsPreferencesViewController: PreferencePane {
     }
 }
 
-// MARK: - Claude Code 集成
+// MARK: - 集成
 
+/// 「集成」分页：展示三个 AI 编码工具（Claude Code / Codex / OpenCode）各自的状态灯
+/// 接入配置状态，并提供「自动配置 / 重新检查 / 打开配置文件」操作。
 final class IntegrationPreferencesViewController: PreferencePane {
-    private let statusIcon = NSImageView()
-    private let statusLabel = NSTextField(labelWithString: "")
-    private var installButton: NSButton?
+    /// 一个工具的配置状态与操作，抽象自三个 ConfigChecker 的公共形状。
+    private struct ToolConfig {
+        let name: String
+        let help: String
+        let isConfigured: () -> Bool
+        let recheck: () -> Void
+        let install: () -> Void
+        let openFile: () -> Void
+    }
+
+    private var toolConfigs: [ToolConfig] = []
+    private var statusRows: [(icon: NSImageView, label: NSTextField, button: NSButton)] = []
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -509,73 +520,140 @@ final class IntegrationPreferencesViewController: PreferencePane {
 
     override func buildContent() {
         addSectionHeader(Loc.integrationHeader)
+        addHelpText(Loc.integrationHelp)
+        addSpacing(4)
+
+        let claude = ToolConfig(
+            name: "Claude Code",
+            help: Loc.integrationClaudeHelp,
+            isConfigured: { ClaudeCodeConfigChecker.isHooksConfigured() },
+            recheck: { ClaudeCodeConfigChecker.check() },
+            install: { ClaudeCodeConfigChecker.installHooksWithUI() },
+            openFile: { [weak self] in
+                let url = ClaudeCodeConfigChecker.settingsFileURL
+                self?.openFile(url)
+            }
+        )
+        let codex = ToolConfig(
+            name: "Codex",
+            help: Loc.integrationCodexHelp,
+            isConfigured: { CodexConfigChecker.isHooksConfigured() },
+            recheck: { CodexConfigChecker.check() },
+            install: { CodexConfigChecker.installHooksWithUI() },
+            openFile: { [weak self] in
+                let url = CodexConfigChecker.hooksFileURL
+                self?.openFile(url)
+            }
+        )
+        let opencode = ToolConfig(
+            name: "OpenCode",
+            help: Loc.integrationOpenCodeHelp,
+            isConfigured: { OpenCodeConfigChecker.isConfigured() },
+            recheck: { OpenCodeConfigChecker.check() },
+            install: { OpenCodeConfigChecker.installPluginWithUI() },
+            openFile: { [weak self] in
+                let url = OpenCodeConfigChecker.pluginFileURL
+                self?.openFile(url)
+            }
+        )
+
+        toolConfigs = [claude, codex, opencode]
+        for (index, config) in toolConfigs.enumerated() {
+            addSectionHeader(config.name)
+            stack.addArrangedSubview(makeSection(for: index))
+            addHelpText(config.help)
+            addSpacing(4)
+        }
+
+        refreshAll()
+    }
+
+    /// 构建某工具的状态行 + 按钮行，并把对应控件记入 `statusRows` 供刷新使用。
+    private func makeSection(for index: Int) -> NSView {
+        let container = NSStackView()
+        container.orientation = .vertical
+        container.alignment = .leading
+        container.spacing = 8
 
         let statusRow = NSStackView()
         statusRow.orientation = .horizontal
         statusRow.spacing = 8
         statusRow.alignment = .centerY
 
-        statusIcon.translatesAutoresizingMaskIntoConstraints = false
-        statusIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
-        statusIcon.heightAnchor.constraint(equalToConstant: 18).isActive = true
-        statusRow.addArrangedSubview(statusIcon)
-        statusRow.addArrangedSubview(statusLabel)
-        stack.addArrangedSubview(statusRow)
+        let icon = NSImageView()
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        statusRow.addArrangedSubview(icon)
 
-        addHelpText(Loc.integrationHelp)
-
-        addSpacing(8)
+        let label = NSTextField(labelWithString: "")
+        statusRow.addArrangedSubview(label)
+        container.addArrangedSubview(statusRow)
 
         let buttonRow = NSStackView()
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
 
-        let install = NSButton(title: Loc.integrationAutoConfigureButton, target: self, action: #selector(installHooks))
+        let install = NSButton(title: Loc.integrationAutoConfigureButton, target: self, action: #selector(installTapped(_:)))
         install.bezelStyle = .rounded
-        installButton = install
+        install.tag = index
         buttonRow.addArrangedSubview(install)
 
-        let recheck = NSButton(title: Loc.integrationRecheckButton, target: self, action: #selector(recheck))
+        let recheck = NSButton(title: Loc.integrationRecheckButton, target: self, action: #selector(recheckTapped(_:)))
         recheck.bezelStyle = .rounded
+        recheck.tag = index
         buttonRow.addArrangedSubview(recheck)
 
-        let openSettings = NSButton(title: Loc.integrationOpenSettingsButton, target: self, action: #selector(openSettingsFile))
+        let openSettings = NSButton(title: Loc.integrationOpenSettingsButton, target: self, action: #selector(openTapped(_:)))
         openSettings.bezelStyle = .rounded
+        openSettings.tag = index
         buttonRow.addArrangedSubview(openSettings)
 
-        stack.addArrangedSubview(buttonRow)
+        container.addArrangedSubview(buttonRow)
 
-        updateStatus(ClaudeCodeConfigChecker.isHooksConfigured())
+        statusRows.append((icon, label, install))
+        return container
     }
 
-    /// 同步集成状态到 UI（可从主线程外部调用）。
-    func updateStatus(_ configured: Bool) {
+    /// 刷新三块工具状态到 UI（可从主线程外部调用）。
+    func refreshAll() {
         DispatchQueue.main.async {
-            if configured {
-                self.statusIcon.image = PrefsUI.symbolImage("checkmark.circle.fill", fallback: NSImage.statusAvailableName)
-                self.statusIcon.contentTintColor = .systemGreen
-                self.statusLabel.stringValue = Loc.integrationConfiguredStatus
-            } else {
-                self.statusIcon.image = PrefsUI.symbolImage("exclamationmark.triangle.fill", fallback: NSImage.statusUnavailableName)
-                self.statusIcon.contentTintColor = .systemOrange
-                self.statusLabel.stringValue = Loc.integrationNotConfiguredStatus
+            for (index, row) in self.statusRows.enumerated() where index < self.toolConfigs.count {
+                let configured = self.toolConfigs[index].isConfigured()
+                row.icon.image = PrefsUI.symbolImage(
+                    configured ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    fallback: configured ? NSImage.statusAvailableName : NSImage.statusUnavailableName
+                )
+                row.icon.contentTintColor = configured ? .systemGreen : .systemOrange
+                row.label.stringValue = configured
+                    ? String(format: Loc.integrationConfiguredStatusFormat, self.toolConfigs[index].name)
+                    : Loc.integrationNotConfiguredStatusFormat
+                row.button.isEnabled = !configured
             }
-            self.installButton?.isEnabled = !configured
         }
     }
 
-    @objc private func installHooks() {
-        ClaudeCodeConfigChecker.installHooksWithUI()
-        updateStatus(ClaudeCodeConfigChecker.isHooksConfigured())
+    @objc private func installTapped(_ sender: NSButton) {
+        let index = sender.tag
+        guard index < toolConfigs.count else { return }
+        toolConfigs[index].install()
+        refreshAll()
     }
 
-    @objc private func recheck() {
-        ClaudeCodeConfigChecker.check()
-        updateStatus(ClaudeCodeConfigChecker.isHooksConfigured())
+    @objc private func recheckTapped(_ sender: NSButton) {
+        let index = sender.tag
+        guard index < toolConfigs.count else { return }
+        toolConfigs[index].recheck()
+        refreshAll()
     }
 
-    @objc private func openSettingsFile() {
-        let url = ClaudeCodeConfigChecker.settingsFileURL
+    @objc private func openTapped(_ sender: NSButton) {
+        let index = sender.tag
+        guard index < toolConfigs.count else { return }
+        toolConfigs[index].openFile()
+    }
+
+    private func openFile(_ url: URL) {
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.open(url)
         } else {

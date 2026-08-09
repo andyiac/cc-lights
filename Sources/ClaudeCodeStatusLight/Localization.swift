@@ -95,6 +95,7 @@ enum Loc {
     static var lightStylePixelRobot: String { tr("Robot", zh: "像素机器人") }
     static var lightStylePixelCat: String { tr("Cat", zh: "像素猫咪") }
     static var lightStylePixelBlock: String { tr("Blocks", zh: "大像素块") }
+    static var lightStylePixelBlock3x3: String { tr("Blocks 3×3", zh: "3×3 大像素块") }
 
     // 状态栏菜单
     static var noSession: String { tr("No Claude Code session", zh: "无 Claude Code session") }
@@ -319,21 +320,114 @@ enum Loc {
     }
 
     // 集成分页
-    static var integrationHeader: String { tr("Claude Code hook configuration", zh: "Claude Code Hook 配置") }
+    static var integrationHeader: String { tr("Tool integrations", zh: "工具集成") }
     static var integrationHelp: String {
         tr(
-            "The lights rely on the hooks in ~/.claude/settings.json to follow Claude Code's status automatically.",
-            zh: "指示灯依赖 ~/.claude/settings.json 中的 hooks 配置，才能随 Claude Code 的状态自动变色。"
+            "Configure status-light hooks for Claude Code, Codex, and OpenCode. Each tool is configured automatically on first launch.",
+            zh: "为 Claude Code、Codex、OpenCode 配置状态灯接入。每个工具都会在首次启动时自动配置。"
         )
     }
     static var integrationAutoConfigureButton: String { tr("Auto-configure Hook", zh: "自动配置 Hook") }
     static var integrationRecheckButton: String { tr("Re-check", zh: "重新检查") }
-    static var integrationOpenSettingsButton: String { tr("Open settings.json", zh: "打开 settings.json") }
-    static var integrationConfiguredStatus: String {
-        tr("Configured — the lights follow Claude Code's status automatically.", zh: "已配置，指示灯会自动跟随 Claude Code 状态。")
+    static var integrationOpenSettingsButton: String { tr("Open config", zh: "打开配置") }
+    static var integrationConfiguredStatusFormat: String {
+        tr("%@ is configured — the lights follow its status automatically.", zh: "%@ 已配置，指示灯会自动跟随其状态。")
     }
-    static var integrationNotConfiguredStatus: String {
-        tr("Not configured — the lights won't change color automatically.", zh: "未配置，指示灯不会自动变色。")
+    static var integrationNotConfiguredStatusFormat: String {
+        tr("%@ isn't configured — tap Auto-configure to enable it.", zh: "%@ 未配置，点击「自动配置」即可启用。")
+    }
+    // 各工具说明（紧跟在每块状态下方）。
+    static var integrationClaudeHelp: String {
+        tr(
+            "Lights via hooks in ~/.claude/settings.json.",
+            zh: "通过 ~/.claude/settings.json 中的 hooks 驱动。"
+        )
+    }
+    static var integrationCodexHelp: String {
+        tr(
+            "Lights via hooks in ~/.codex/hooks.json.",
+            zh: "通过 ~/.codex/hooks.json 中的 hooks 驱动。"
+        )
+    }
+    static var integrationOpenCodeHelp: String {
+        tr(
+            "Lights via the plugin at ~/.config/opencode/plugins/cc-lights.js.",
+            zh: "通过 ~/.config/opencode/plugins/cc-lights.js 插件驱动。"
+        )
+    }
+
+    // Codex 集成
+    static var codexAutoConfiguredTitle: String {
+        tr("Codex integration configured automatically", zh: "已自动配置 Codex 集成")
+    }
+    static var codexAutoConfiguredBody: String {
+        tr(
+            "The status-light hooks were written to ~/.codex/hooks.json (the original was backed up).\n\nRestart Codex for the change to take effect.",
+            zh: "已把状态灯 hook 写入 ~/.codex/hooks.json（原文件已备份）。\n\n请重启 Codex 使配置生效。"
+        )
+    }
+    static var codexHookConfiguredTitle: String { tr("✅ Codex hooks configured", zh: "✅ Codex Hook 已配置") }
+    static var codexHookNotConfiguredTitle: String {
+        tr("⚠️ No Codex hook configuration detected", zh: "⚠️ 未检测到 Codex Hook 配置")
+    }
+    static var codexHookConfiguredBody: String {
+        tr(
+            "The lights will follow Codex's status automatically.\n\nTo adjust, edit the hooks in ~/.codex/hooks.json.",
+            zh: "状态灯将自动跟随 Codex 的状态变化。\n\n如需调整，请编辑 ~/.codex/hooks.json 中的 hooks 配置。"
+        )
+    }
+    static var codexHookNotConfiguredBody: String {
+        tr(
+            "The lights need Codex's hook configuration to change color automatically.\n\nClick \"Auto-configure for me\" and the app will write ~/.codex/hooks.json (backing up the original).",
+            zh: "状态灯需要 Codex 的 Hook 配置才能自动变化颜色。\n\n点击「为我自动配置」后，App 会写入 ~/.codex/hooks.json（并备份原文件）。"
+        )
+    }
+    static var codexInvalidHooksError: String {
+        tr(
+            "~/.codex/hooks.json isn't valid JSON. Please fix it manually and try again.",
+            zh: "~/.codex/hooks.json 不是合法的 JSON，请先手动修复后再试。"
+        )
+    }
+    static var codexHooksWrittenTitle: String { tr("✅ Codex hooks written", zh: "✅ 已写入 Codex Hook 配置") }
+    static var codexHooksMergedBody: String {
+        tr(
+            "The status-light hooks were merged into ~/.codex/hooks.json (the original was backed up as hooks.json.bak-*).\n\nRestart Codex for the change to take effect.",
+            zh: "已把状态灯 hook 合并进 ~/.codex/hooks.json（原文件已备份为 hooks.json.bak-*）。\n\n请重启 Codex 使配置生效。"
+        )
+    }
+
+    // OpenCode 集成
+    static var opencodeAutoConfiguredTitle: String {
+        tr("OpenCode integration configured automatically", zh: "已自动配置 OpenCode 集成")
+    }
+    static var opencodeAutoConfiguredBody: String {
+        tr(
+            "The status-light plugin was written to ~/.config/opencode/plugins/.\n\nRestart OpenCode for the change to take effect.",
+            zh: "已把状态灯插件写入 ~/.config/opencode/plugins/。\n\n请重启 OpenCode 使配置生效。"
+        )
+    }
+    static var opencodeConfiguredTitle: String { tr("✅ OpenCode plugin installed", zh: "✅ OpenCode 插件已安装") }
+    static var opencodeNotConfiguredTitle: String {
+        tr("⚠️ No OpenCode plugin detected", zh: "⚠️ 未检测到 OpenCode 插件")
+    }
+    static var opencodeConfiguredBody: String {
+        tr(
+            "The lights will follow OpenCode's status automatically.\n\nTo adjust, edit ~/.config/opencode/plugins/cc-lights.js.",
+            zh: "状态灯将自动跟随 OpenCode 的状态变化。\n\n如需调整，请编辑 ~/.config/opencode/plugins/cc-lights.js。"
+        )
+    }
+    static var opencodeNotConfiguredBody: String {
+        tr(
+            "The lights need the OpenCode plugin to change color automatically.\n\nClick \"Auto-configure for me\" and the app will write ~/.config/opencode/plugins/cc-lights.js.",
+            zh: "状态灯需要 OpenCode 插件才能自动变化颜色。\n\n点击「为我自动配置」后，App 会写入 ~/.config/opencode/plugins/cc-lights.js。"
+        )
+    }
+    static var opencodePluginWrittenTitle: String { tr("✅ OpenCode plugin written", zh: "✅ 已写入 OpenCode 插件") }
+    static var opencodePluginWrittenBody: String {
+        tr(
+            "The status-light plugin was written to ~/.config/opencode/plugins/cc-lights.js.\n\nRestart OpenCode for the change to take effect.",
+            zh: "已把状态灯插件写入 ~/.config/opencode/plugins/cc-lights.js。\n\n请重启 OpenCode 使配置生效。"
+        )
     }
 
     // 检查更新
