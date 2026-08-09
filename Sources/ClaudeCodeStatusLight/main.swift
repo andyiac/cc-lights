@@ -389,11 +389,25 @@ final class StatusBarController: NSObject {
         }
 
         let state = payload?.state ?? .offline
-        statusItem.length = iconStyle.statusItemLength
-        button.image = StatusIcon.image(for: state, style: iconStyle)
+        let style = resolvedStyle(for: payload)
+        statusItem.length = style.statusItemLength
+        button.image = StatusIcon.image(for: state, style: style)
         button.title = ""
         button.toolTip = payload.map(tooltip(for:)) ?? Loc.tooltipNoSession
         button.alphaValue = 1.0
+    }
+
+    /// 解析某盏灯应使用的样式：有 session 时取其覆盖值（回落到全局默认），无 session 的占位灯用全局默认。
+    private func resolvedStyle(for payload: StatusPayload?) -> StatusLightStyle {
+        guard let payload else {
+            return iconStyle
+        }
+        return SessionLightStyle.style(for: payload.sessionID)
+    }
+
+    /// 当前会话按菜单栏同样的顺序排序，供偏好设置的每-session 列表使用。
+    func currentSortedSessions() -> [StatusPayload] {
+        currentSessions.sorted(by: sessionSort)
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -434,6 +448,13 @@ final class StatusBarController: NSObject {
         menu.addItem(countItem)
 
         menu.addItem(.separator())
+
+        if let payload {
+            let styleItem = NSMenuItem(title: Loc.lightStyleMenu, action: nil, keyEquivalent: "")
+            styleItem.submenu = makeLightStyleSubmenu(for: payload.sessionID)
+            menu.addItem(styleItem)
+            menu.addItem(.separator())
+        }
 
         let resetItem = NSMenuItem(title: Loc.resetSessionToGreen, action: #selector(resetSelectedToIdle(_:)), keyEquivalent: "r")
         resetItem.target = self
@@ -511,6 +532,34 @@ final class StatusBarController: NSObject {
         return Loc.stateName(payload.state)
     }
 
+    private struct SessionStyleChoice {
+        let sessionID: String
+        let style: StatusLightStyle
+    }
+
+    /// 为某个 session 构建「灯样式」子菜单：每个样式一行，带小样图预览，当前样式打勾。
+    private func makeLightStyleSubmenu(for sessionID: String) -> NSMenu {
+        let submenu = NSMenu()
+        let currentStyle = SessionLightStyle.style(for: sessionID)
+        for style in StatusLightStyle.allCases {
+            let item = NSMenuItem(title: style.displayName, action: #selector(changeSessionLightStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.image = StatusIcon.image(for: .idle, style: style)
+            item.representedObject = SessionStyleChoice(sessionID: sessionID, style: style)
+            item.state = (style == currentStyle) ? .on : .off
+            submenu.addItem(item)
+        }
+        return submenu
+    }
+
+    @objc private func changeSessionLightStyle(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? SessionStyleChoice else {
+            return
+        }
+        SessionLightStyle.setStyle(choice.style, for: choice.sessionID)
+        refreshStatusItemIcons()
+    }
+
     @objc private func resetSelectedToIdle(_ sender: NSMenuItem) {
         guard let sessionID = sender.representedObject as? String,
               let payload = currentSessions.first(where: { $0.sessionID == sessionID }) else {
@@ -560,6 +609,12 @@ final class StatusBarController: NSObject {
                 },
                 onLanguageChange: { [weak self] in
                     self?.applyLanguageChange()
+                },
+                sessionsProvider: { [weak self] in
+                    self?.currentSortedSessions() ?? []
+                },
+                onSessionStyleChange: { [weak self] in
+                    self?.refreshStatusItemIcons()
                 }
             )
         }
@@ -890,6 +945,10 @@ final class StatusBarController: NSObject {
 enum StatusLightStyle: String, CaseIterable {
     case round
     case pixel
+    case pixelRing
+    case pixelSquare
+    case pixelDiamond
+    case pixelGlow
 
     private static let defaultsKey = "statusLightStyle"
 
@@ -912,16 +971,42 @@ enum StatusLightStyle: String, CaseIterable {
             return Loc.lightStyleRound
         case .pixel:
             return Loc.lightStylePixel
+        case .pixelRing:
+            return Loc.lightStylePixelRing
+        case .pixelSquare:
+            return Loc.lightStylePixelSquare
+        case .pixelDiamond:
+            return Loc.lightStylePixelDiamond
+        case .pixelGlow:
+            return Loc.lightStylePixelGlow
         }
     }
 
-    var statusItemLength: CGFloat {
-        switch self {
-        case .round:
-            return NSStatusItem.squareLength
-        case .pixel:
-            return NSStatusItem.squareLength
+    // 所有样式都占用方形宽度。
+    var statusItemLength: CGFloat { NSStatusItem.squareLength }
+}
+
+/// 每个 session 可单独覆盖灯样式；未设置时回落到全局默认 `StatusLightStyle.current`。
+/// 覆盖值以 [sessionID: rawValue] 存进 UserDefaults。
+enum SessionLightStyle {
+    private static let defaultsKey = "sessionLightStyles"
+
+    static func style(for sessionID: String) -> StatusLightStyle {
+        guard let rawValue = overrides()[sessionID],
+              let style = StatusLightStyle(rawValue: rawValue) else {
+            return StatusLightStyle.current
         }
+        return style
+    }
+
+    static func setStyle(_ style: StatusLightStyle, for sessionID: String) {
+        var map = overrides()
+        map[sessionID] = style.rawValue
+        UserDefaults.standard.set(map, forKey: defaultsKey)
+    }
+
+    private static func overrides() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String] ?? [:]
     }
 }
 
@@ -932,6 +1017,14 @@ enum StatusIcon {
             return roundImage(for: state)
         case .pixel:
             return pixelImage(for: state)
+        case .pixelRing:
+            return pixelShapeImage(mask: ringMask, for: state)
+        case .pixelSquare:
+            return pixelShapeImage(mask: squareMask, for: state)
+        case .pixelDiamond:
+            return pixelShapeImage(mask: diamondMask, for: state)
+        case .pixelGlow:
+            return pixelGlowImage(for: state)
         }
     }
 
@@ -1028,6 +1121,152 @@ enum StatusIcon {
                 ).fill()
             }
         }
+    }
+
+    // MARK: 像素风形状（圆环 / 方块 / 菱形 / 光晕）
+
+    /// 用字符点阵定义像素形状：非空格且非 "." 的字符视为实心格。
+    private static func pixelMask(_ rows: String...) -> [[Bool]] {
+        rows.map { $0.map { $0 != " " && $0 != "." } }
+    }
+
+    private static let circleMask = pixelMask(
+        "..XXX..",
+        ".XXXXX.",
+        "XXXXXXX",
+        "XXXXXXX",
+        "XXXXXXX",
+        ".XXXXX.",
+        "..XXX.."
+    )
+
+    private static let ringMask = pixelMask(
+        "..XXX..",
+        ".XXXXX.",
+        "XX...XX",
+        "XX...XX",
+        "XX...XX",
+        ".XXXXX.",
+        "..XXX.."
+    )
+
+    private static let squareMask = pixelMask(
+        ".XXXXX.",
+        "XXXXXXX",
+        "XXXXXXX",
+        "XXXXXXX",
+        "XXXXXXX",
+        "XXXXXXX",
+        ".XXXXX."
+    )
+
+    private static let diamondMask = pixelMask(
+        "...X...",
+        "..XXX..",
+        ".XXXXX.",
+        "XXXXXXX",
+        ".XXXXX.",
+        "..XXX..",
+        "...X..."
+    )
+
+    private static func pixelShapeImage(mask: [[Bool]], for state: StatusState) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+
+        let context = NSGraphicsContext.current
+        context?.shouldAntialias = false
+        context?.imageInterpolation = .none
+
+        drawPixelShape(mask: mask, origin: NSPoint(x: 2, y: 2), scale: 2, color: pixelColor(for: state))
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    /// 像素光晕：先画一圈半透明外扩像素，再叠上实心圆点。
+    private static func pixelGlowImage(for state: StatusState) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+
+        let context = NSGraphicsContext.current
+        context?.shouldAntialias = false
+        context?.imageInterpolation = .none
+
+        let color = pixelColor(for: state)
+        drawPixelHalo(mask: circleMask, origin: NSPoint(x: 2, y: 2), scale: 2, color: color)
+        drawPixelShape(mask: circleMask, origin: NSPoint(x: 2, y: 2), scale: 2, color: color)
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    /// 按点阵绘制像素形状：描边格用暗色，左上高光、右下阴影营造立体感。
+    private static func drawPixelShape(mask: [[Bool]], origin: NSPoint, scale: CGFloat, color: NSColor) {
+        let rows = mask.count
+        let cols = mask.map(\.count).max() ?? 0
+        guard rows > 0, cols > 0 else { return }
+
+        let borderColor = color.blended(withFraction: 0.25, of: .black) ?? color
+        let shadowColor = color.blended(withFraction: 0.12, of: .black) ?? color
+        let highlightColor = color.blended(withFraction: 0.7, of: .white) ?? color
+
+        for row in 0..<rows {
+            for column in 0..<mask[row].count where mask[row][column] {
+                let onBorder = !maskCell(mask, row - 1, column)
+                    || !maskCell(mask, row + 1, column)
+                    || !maskCell(mask, row, column - 1)
+                    || !maskCell(mask, row, column + 1)
+                let ny = Double(row) / Double(max(rows - 1, 1))
+                let nx = Double(column) / Double(max(cols - 1, 1))
+                let isHighlight = ny <= 0.35 && nx >= 0.45
+                let isShadow = ny >= 0.65 || nx >= 0.65
+                let fill: NSColor = onBorder
+                    ? borderColor
+                    : (isHighlight ? highlightColor : (isShadow ? shadowColor : color))
+
+                fill.setFill()
+                NSRect(
+                    x: origin.x + CGFloat(column) * scale,
+                    y: origin.y + CGFloat(rows - 1 - row) * scale,
+                    width: scale,
+                    height: scale
+                ).fill()
+            }
+        }
+    }
+
+    /// 在形状外围紧邻的空格里画半透明像素，形成光晕。
+    private static func drawPixelHalo(mask: [[Bool]], origin: NSPoint, scale: CGFloat, color: NSColor) {
+        let rows = mask.count
+        let cols = mask.map(\.count).max() ?? 0
+        guard rows > 0, cols > 0 else { return }
+
+        color.withAlphaComponent(0.28).setFill()
+        for row in -1...rows {
+            for column in -1...cols where !maskCell(mask, row, column) {
+                let adjacent = maskCell(mask, row - 1, column) || maskCell(mask, row + 1, column)
+                    || maskCell(mask, row, column - 1) || maskCell(mask, row, column + 1)
+                    || maskCell(mask, row - 1, column - 1) || maskCell(mask, row - 1, column + 1)
+                    || maskCell(mask, row + 1, column - 1) || maskCell(mask, row + 1, column + 1)
+                guard adjacent else { continue }
+                NSRect(
+                    x: origin.x + CGFloat(column) * scale,
+                    y: origin.y + CGFloat(rows - 1 - row) * scale,
+                    width: scale,
+                    height: scale
+                ).fill()
+            }
+        }
+    }
+
+    private static func maskCell(_ mask: [[Bool]], _ row: Int, _ column: Int) -> Bool {
+        guard row >= 0, row < mask.count, column >= 0, column < mask[row].count else {
+            return false
+        }
+        return mask[row][column]
     }
 
     private static func lampColor(_ color: LampColor) -> NSColor {

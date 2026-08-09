@@ -87,6 +87,10 @@ enum Loc {
     // 灯样式
     static var lightStyleRound: String { tr("Round", zh: "圆形灯") }
     static var lightStylePixel: String { tr("Pixel", zh: "像素风格") }
+    static var lightStylePixelRing: String { tr("Ring", zh: "像素圆环") }
+    static var lightStylePixelSquare: String { tr("Square", zh: "像素方块") }
+    static var lightStylePixelDiamond: String { tr("Diamond", zh: "像素菱形") }
+    static var lightStylePixelGlow: String { tr("Glow", zh: "像素光晕") }
 
     // 状态栏菜单
     static var noSession: String { tr("No Claude Code session", zh: "无 Claude Code session") }
@@ -96,6 +100,7 @@ enum Loc {
     static func sessionsCount(_ count: Int) -> String {
         tr("Sessions: \(count)", zh: "Sessions：\(count)")
     }
+    static var lightStyleMenu: String { tr("Light style", zh: "灯样式") }
     static var resetSessionToGreen: String { tr("Reset this session to green", zh: "重置此 session 为绿灯") }
     static var clearAllErrors: String { tr("Clear all errors", zh: "清除所有错误") }
     static var preferences: String { tr("Preferences…", zh: "偏好设置…") }
@@ -275,6 +280,14 @@ enum Loc {
         tr(
             "Preview, left to right: no session / idle / waiting / error.",
             zh: "预览从左到右依次为：无会话 / 空闲 / 等待决策 / 错误。"
+        )
+    }
+    static var perSessionStyleHeader: String { tr("Per-session light style", zh: "每个会话的灯样式") }
+    static var perSessionStyleEmpty: String { tr("No active sessions right now", zh: "当前没有活动会话") }
+    static var perSessionStyleHelp: String {
+        tr(
+            "Override the light style for a specific session. You can also right-click a light to switch it.",
+            zh: "为单个会话单独设置灯样式（覆盖上面的默认样式）；也可以右键某盏灯快速切换。"
         )
     }
     static var launchToggleErrorTitle: String {

@@ -15,13 +15,17 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         notificationController: NotificationController,
         initialStyle: StatusLightStyle,
         onStyleChange: @escaping (StatusLightStyle) -> Void,
-        onLanguageChange: @escaping () -> Void
+        onLanguageChange: @escaping () -> Void,
+        sessionsProvider: @escaping () -> [StatusPayload],
+        onSessionStyleChange: @escaping () -> Void
     ) {
         tabController = PreferencesTabViewController(
             notificationController: notificationController,
             initialStyle: initialStyle,
             onStyleChange: onStyleChange,
-            onLanguageChange: onLanguageChange
+            onLanguageChange: onLanguageChange,
+            sessionsProvider: sessionsProvider,
+            onSessionStyleChange: onSessionStyleChange
         )
 
         let window = NSWindow(contentViewController: tabController)
@@ -54,6 +58,9 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+
+        // 会话是动态的，每次打开都刷新每-session 灯样式列表。
+        tabController.reloadSessionStyles()
     }
 
     /// 集成状态变化时（配置监视器触发）同步刷新「集成」分页。
@@ -79,12 +86,16 @@ final class PreferencesTabViewController: NSTabViewController {
         notificationController: NotificationController,
         initialStyle: StatusLightStyle,
         onStyleChange: @escaping (StatusLightStyle) -> Void,
-        onLanguageChange: @escaping () -> Void
+        onLanguageChange: @escaping () -> Void,
+        sessionsProvider: @escaping () -> [StatusPayload],
+        onSessionStyleChange: @escaping () -> Void
     ) {
         generalViewController = GeneralPreferencesViewController(
             initialStyle: initialStyle,
             onStyleChange: onStyleChange,
-            onLanguageChange: onLanguageChange
+            onLanguageChange: onLanguageChange,
+            sessionsProvider: sessionsProvider,
+            onSessionStyleChange: onSessionStyleChange
         )
         notificationsViewController = NotificationsPreferencesViewController(
             notificationController: notificationController
@@ -107,6 +118,11 @@ final class PreferencesTabViewController: NSTabViewController {
         addPane(notificationsViewController, label: Loc.tabNotifications, symbol: "bell", fallback: NSImage.userAccountsName)
         addPane(integrationViewController, label: Loc.tabIntegration, symbol: "puzzlepiece", fallback: NSImage.networkName)
         addPane(aboutViewController, label: Loc.tabAbout, symbol: "info.circle", fallback: NSImage.infoName)
+    }
+
+    /// 会话列表是动态的，外部（窗口每次展示时）调用它刷新每-session 灯样式列表。
+    func reloadSessionStyles() {
+        generalViewController.reloadSessionStyles()
     }
 
     private func addPane(_ controller: NSViewController, label: String, symbol: String, fallback: NSImage.Name) {
@@ -197,9 +213,14 @@ class PreferencePane: NSViewController {
 final class GeneralPreferencesViewController: PreferencePane {
     private let onStyleChange: (StatusLightStyle) -> Void
     private let onLanguageChange: () -> Void
+    private let sessionsProvider: () -> [StatusPayload]
+    private let onSessionStyleChange: () -> Void
     private var selectedStyle: StatusLightStyle
     private var launchCheckbox: NSButton?
     private var previewViews: [(state: StatusState, imageView: NSImageView)] = []
+    private var sessionStyleContainer: NSStackView?
+    private var sessionSnapshot: [StatusPayload] = []
+    private var sessionRowPreviews: [Int: NSImageView] = [:]
 
     /// 语言分段的顺序：跟随系统 / English / 中文。
     private let languageOptions: [AppLanguage?] = [nil, .english, .chinese]
@@ -207,11 +228,15 @@ final class GeneralPreferencesViewController: PreferencePane {
     init(
         initialStyle: StatusLightStyle,
         onStyleChange: @escaping (StatusLightStyle) -> Void,
-        onLanguageChange: @escaping () -> Void
+        onLanguageChange: @escaping () -> Void,
+        sessionsProvider: @escaping () -> [StatusPayload],
+        onSessionStyleChange: @escaping () -> Void
     ) {
         self.selectedStyle = initialStyle
         self.onStyleChange = onStyleChange
         self.onLanguageChange = onLanguageChange
+        self.sessionsProvider = sessionsProvider
+        self.onSessionStyleChange = onSessionStyleChange
         super.init(nibName: nil, bundle: nil)
         title = Loc.tabGeneral
     }
@@ -269,6 +294,98 @@ final class GeneralPreferencesViewController: PreferencePane {
         addSpacing(4)
         stack.addArrangedSubview(makePreviewRow())
         addHelpText(Loc.lightStylePreviewHelp)
+
+        addSpacing(6)
+        addSeparator()
+        addSpacing(6)
+
+        addSectionHeader(Loc.perSessionStyleHeader)
+
+        let container = NSStackView()
+        container.orientation = .vertical
+        container.alignment = .leading
+        container.spacing = 8
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        stack.addArrangedSubview(container)
+        sessionStyleContainer = container
+        populateSessionStyles(into: container)
+
+        addHelpText(Loc.perSessionStyleHelp)
+    }
+
+    /// 窗口每次展示时刷新会话列表（会话是动态增删的）。
+    func reloadSessionStyles() {
+        guard isViewLoaded, let container = sessionStyleContainer else { return }
+        populateSessionStyles(into: container)
+    }
+
+    private func populateSessionStyles(into container: NSStackView) {
+        container.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        sessionRowPreviews.removeAll()
+        sessionSnapshot = sessionsProvider()
+
+        guard !sessionSnapshot.isEmpty else {
+            let empty = NSTextField(labelWithString: Loc.perSessionStyleEmpty)
+            empty.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            empty.textColor = .secondaryLabelColor
+            container.addArrangedSubview(empty)
+            return
+        }
+
+        for (index, payload) in sessionSnapshot.enumerated() {
+            container.addArrangedSubview(makeSessionRow(payload: payload, index: index))
+        }
+    }
+
+    private func makeSessionRow(payload: StatusPayload, index: Int) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = 8
+        row.alignment = .centerY
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+
+        let currentStyle = SessionLightStyle.style(for: payload.sessionID)
+
+        let preview = NSImageView()
+        preview.imageScaling = .scaleNone
+        preview.translatesAutoresizingMaskIntoConstraints = false
+        preview.widthAnchor.constraint(equalToConstant: 20).isActive = true
+        preview.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        preview.image = StatusIcon.image(for: payload.state, style: currentStyle)
+        sessionRowPreviews[index] = preview
+        row.addArrangedSubview(preview)
+
+        let title = NSTextField(labelWithString: payload.displayTitle)
+        title.lineBreakMode = .byTruncatingMiddle
+        title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(title)
+
+        let popup = NSPopUpButton()
+        popup.addItems(withTitles: StatusLightStyle.allCases.map(\.displayName))
+        popup.selectItem(at: StatusLightStyle.allCases.firstIndex(of: currentStyle) ?? 0)
+        popup.tag = index
+        popup.target = self
+        popup.action = #selector(sessionStylePopupChanged(_:))
+        popup.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        row.addArrangedSubview(popup)
+
+        return row
+    }
+
+    @objc private func sessionStylePopupChanged(_ sender: NSPopUpButton) {
+        let index = sender.tag
+        guard sessionSnapshot.indices.contains(index) else { return }
+        let styleIndex = sender.indexOfSelectedItem
+        guard StatusLightStyle.allCases.indices.contains(styleIndex) else { return }
+
+        let style = StatusLightStyle.allCases[styleIndex]
+        let payload = sessionSnapshot[index]
+        SessionLightStyle.setStyle(style, for: payload.sessionID)
+        sessionRowPreviews[index]?.image = StatusIcon.image(for: payload.state, style: style)
+        onSessionStyleChange()
     }
 
     private func makePreviewRow() -> NSView {
