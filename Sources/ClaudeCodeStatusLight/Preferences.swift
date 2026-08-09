@@ -282,14 +282,16 @@ final class GeneralPreferencesViewController: PreferencePane {
 
         addSectionHeader(Loc.lightStyleHeader)
 
-        let segmented = NSSegmentedControl(
-            labels: StatusLightStyle.allCases.map(\.displayName),
-            trackingMode: .selectOne,
-            target: self,
-            action: #selector(styleChanged(_:))
-        )
-        segmented.selectedSegment = StatusLightStyle.allCases.firstIndex(of: selectedStyle) ?? 0
-        stack.addArrangedSubview(segmented)
+        // 样式数量较多，用带样图的下拉菜单（分段控件放不下）。
+        let stylePopup = NSPopUpButton()
+        for style in StatusLightStyle.allCases {
+            stylePopup.addItem(withTitle: style.displayName)
+            stylePopup.lastItem?.image = StatusIcon.image(for: .idle, style: style)
+        }
+        stylePopup.selectItem(at: StatusLightStyle.allCases.firstIndex(of: selectedStyle) ?? 0)
+        stylePopup.target = self
+        stylePopup.action = #selector(styleChanged(_:))
+        stack.addArrangedSubview(stylePopup)
 
         addSpacing(4)
         stack.addArrangedSubview(makePreviewRow())
@@ -415,8 +417,8 @@ final class GeneralPreferencesViewController: PreferencePane {
         }
     }
 
-    @objc private func styleChanged(_ sender: NSSegmentedControl) {
-        let index = sender.selectedSegment
+    @objc private func styleChanged(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
         guard StatusLightStyle.allCases.indices.contains(index) else { return }
         let style = StatusLightStyle.allCases[index]
         guard style != selectedStyle else { return }

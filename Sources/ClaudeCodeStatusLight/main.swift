@@ -949,6 +949,10 @@ enum StatusLightStyle: String, CaseIterable {
     case pixelSquare
     case pixelDiamond
     case pixelGlow
+    case pixelCrab
+    case pixelRobot
+    case pixelCat
+    case pixelBlock
 
     private static let defaultsKey = "statusLightStyle"
 
@@ -979,6 +983,14 @@ enum StatusLightStyle: String, CaseIterable {
             return Loc.lightStylePixelDiamond
         case .pixelGlow:
             return Loc.lightStylePixelGlow
+        case .pixelCrab:
+            return Loc.lightStylePixelCrab
+        case .pixelRobot:
+            return Loc.lightStylePixelRobot
+        case .pixelCat:
+            return Loc.lightStylePixelCat
+        case .pixelBlock:
+            return Loc.lightStylePixelBlock
         }
     }
 
@@ -1025,6 +1037,14 @@ enum StatusIcon {
             return pixelShapeImage(mask: diamondMask, for: state)
         case .pixelGlow:
             return pixelGlowImage(for: state)
+        case .pixelCrab:
+            return pixelSpriteImage(rows: crabSprite, for: state)
+        case .pixelRobot:
+            return pixelSpriteImage(rows: robotSprite, for: state)
+        case .pixelCat:
+            return pixelSpriteImage(rows: catSprite, for: state)
+        case .pixelBlock:
+            return pixelBlockImage(for: state)
         }
     }
 
@@ -1267,6 +1287,157 @@ enum StatusIcon {
             return false
         }
         return mask[row][column]
+    }
+
+    // MARK: 像素风生物 / 机器人 sprite
+
+    /// sprite 点阵调色板：'X' 身体（状态色）、'#' 暗部（混黑）、'o' 眼睛（近黑）、'*' 白色高光，其余为空。
+    private static let crabSprite = [
+        "...o.o...",
+        "...X.X...",
+        "XX.XXX.XX",
+        "XXXXXXXXX",
+        ".XXXXXXX.",
+        "..XXXXX..",
+        ".#.#.#.#."
+    ]
+
+    private static let robotSprite = [
+        "...oo...",
+        "...##...",
+        ".XXXXXX.",
+        ".XoXXoX.",
+        ".XXXXXX.",
+        ".X#XX#X.",
+        "..XXXX..",
+        ".XXXXXX.",
+        ".X....X."
+    ]
+
+    private static let catSprite = [
+        "X.....X",
+        "XX...XX",
+        "XXXXXXX",
+        "XoXXXoX",
+        "XXXoXXX",
+        ".XXXXX.",
+        "..X.X.."
+    ]
+
+    /// 把 sprite 点阵居中绘制到 18×18 画布（scale 2）。形状表达样式，颜色仍表达状态。
+    private static func pixelSpriteImage(rows: [String], for state: StatusState) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+
+        let context = NSGraphicsContext.current
+        context?.shouldAntialias = false
+        context?.imageInterpolation = .none
+
+        let scale: CGFloat = 2
+        let width = rows.map(\.count).max() ?? 0
+        let height = rows.count
+        let origin = NSPoint(
+            x: (18 - CGFloat(width) * scale) / 2,
+            y: (18 - CGFloat(height) * scale) / 2
+        )
+        drawPixelSprite(rows: rows, origin: origin, scale: scale, color: pixelColor(for: state))
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    private static func drawPixelSprite(rows: [String], origin: NSPoint, scale: CGFloat, color: NSColor) {
+        let dark = color.blended(withFraction: 0.42, of: .black) ?? color
+        let eye = color.blended(withFraction: 0.80, of: .black) ?? .black
+        let height = rows.count
+
+        for (row, line) in rows.enumerated() {
+            for (column, character) in line.enumerated() {
+                let fill: NSColor?
+                switch character {
+                case "X": fill = color
+                case "#": fill = dark
+                case "o": fill = eye
+                case "*": fill = .white
+                default: fill = nil
+                }
+                guard let fill else { continue }
+
+                fill.setFill()
+                NSRect(
+                    x: origin.x + CGFloat(column) * scale,
+                    y: origin.y + CGFloat(height - 1 - row) * scale,
+                    width: scale,
+                    height: scale
+                ).fill()
+            }
+        }
+    }
+
+    /// 圆形大像素块：上下边各 2 个、中间各 4 个大像素（去四角），像素间以暗色分隔线区分。
+    private static let blockMask = [
+        [false, true, true, false],
+        [true, true, true, true],
+        [true, true, true, true],
+        [false, true, true, false]
+    ]
+
+    private static func pixelBlockImage(for state: StatusState) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+
+        let context = NSGraphicsContext.current
+        context?.shouldAntialias = false
+        context?.imageInterpolation = .none
+
+        let color = pixelColor(for: state)
+        let grid = color.blended(withFraction: 0.38, of: .black) ?? color
+        let rows = blockMask.count
+        let cols = 4
+        let pitch: CGFloat = 4
+        let total = CGFloat(cols) * pitch
+        let origin = NSPoint(x: (18 - total) / 2, y: (18 - total) / 2)
+
+        // 大像素块本体
+        color.setFill()
+        for row in 0..<rows {
+            for column in 0..<cols where maskCell(blockMask, row, column) {
+                NSRect(
+                    x: origin.x + CGFloat(column) * pitch,
+                    y: origin.y + CGFloat(rows - 1 - row) * pitch,
+                    width: pitch,
+                    height: pitch
+                ).fill()
+            }
+        }
+
+        // 相邻大像素之间画分隔线，让「大像素」看得出来
+        grid.setFill()
+        for row in 0..<rows {
+            for column in 1..<cols where maskCell(blockMask, row, column - 1) && maskCell(blockMask, row, column) {
+                NSRect(
+                    x: origin.x + CGFloat(column) * pitch,
+                    y: origin.y + CGFloat(rows - 1 - row) * pitch,
+                    width: 1,
+                    height: pitch
+                ).fill()
+            }
+        }
+        for row in 1..<rows {
+            for column in 0..<cols where maskCell(blockMask, row - 1, column) && maskCell(blockMask, row, column) {
+                NSRect(
+                    x: origin.x + CGFloat(column) * pitch,
+                    y: origin.y + CGFloat(rows - row) * pitch,
+                    width: pitch,
+                    height: 1
+                ).fill()
+            }
+        }
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
     }
 
     private static func lampColor(_ color: LampColor) -> NSColor {
