@@ -49,6 +49,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.configMonitor = configMonitor
         configMonitor.start()
+
+        // 启动后静默检查一次更新，有新版本时在右键菜单中提示。
+        UpdateChecker.check { [weak controller] result in
+            DispatchQueue.main.async {
+                if case .updateAvailable(let latest) = result {
+                    controller?.latestAvailableVersion = latest
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -136,10 +145,14 @@ final class StatusBarController: NSObject {
     private let waitingTimeoutDelay: TimeInterval = 30
     private let errorFlashStep: TimeInterval = 0.2
     private let errorFlashCount = 3
+    private let snakeStep: TimeInterval = 0.15
+    private let snakeLoopLength = 12
     private let placeholderTag = -1
     private let cmuxDefaultBundleIdentifier = "com.cmuxterm.app"
     private var iconStyle = StatusLightStyle.current
     private var preferencesWindowController: PreferencesWindowController?
+    /// 后台检查得到的最新版本号；为 nil 表示还没有结果或当前已是最新。
+    var latestAvailableVersion: String?
 
     init(notificationController: NotificationController) {
         self.notificationController = notificationController
@@ -237,7 +250,14 @@ final class StatusBarController: NSObject {
 
     private func hasActiveAnimation(now: Date = Date()) -> Bool {
         currentSessions.contains { animationConfiguration(for: $0, now: now) != nil }
+            || currentSessions.contains { usesSnakeAnimation(for: $0) }
             || errorFlashStartBySessionID.values.contains { now.timeIntervalSince($0) < errorFlashDuration }
+    }
+
+    /// 大像素方块的 working 灯用「贪吃蛇」围边行走动画（逐帧换图），而非 alpha 脉动。
+    private func usesSnakeAnimation(for payload: StatusPayload) -> Bool {
+        guard payload.state == .working else { return false }
+        return resolvedStyle(for: payload) == .pixelBlock
     }
 
     private func startStatusAnimation() {
@@ -259,6 +279,14 @@ final class StatusBarController: NSObject {
 
                     guard let payload = self.visiblePayloadsByTag[button.tag] else {
                         button.alphaValue = 1.0
+                        continue
+                    }
+
+                    if self.usesSnakeAnimation(for: payload) {
+                        let headCell = Int(elapsed / self.snakeStep) % self.snakeLoopLength
+                        button.image = StatusIcon.pixelBlockSnakeImage(for: payload.state, headCell: headCell)
+                        button.alphaValue = 1.0
+                        hasAnimation = true
                         continue
                     }
 
@@ -469,6 +497,17 @@ final class StatusBarController: NSObject {
 
         menu.addItem(.separator())
 
+        if let latest = latestAvailableVersion,
+           UpdateChecker.isNewer(latest, than: UpdateChecker.currentVersion) {
+            let updateItem = NSMenuItem(title: Loc.updateAvailable(latest), action: #selector(openUpdatePage), keyEquivalent: "")
+            updateItem.target = self
+            menu.addItem(updateItem)
+        }
+
+        let checkUpdateItem = NSMenuItem(title: Loc.checkForUpdates, action: #selector(checkForUpdates), keyEquivalent: "")
+        checkUpdateItem.target = self
+        menu.addItem(checkUpdateItem)
+
         let preferencesItem = NSMenuItem(title: Loc.preferences, action: #selector(openPreferences), keyEquivalent: ",")
         preferencesItem.target = self
         menu.addItem(preferencesItem)
@@ -599,6 +638,50 @@ final class StatusBarController: NSObject {
         )
     }
 
+    @objc private func checkForUpdates() {
+        UpdateChecker.check { [weak self] result in
+            DispatchQueue.main.async {
+                self?.presentUpdateResult(result)
+            }
+        }
+    }
+
+    @objc private func openUpdatePage() {
+        guard let url = UpdateChecker.releasePageURL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func presentUpdateResult(_ result: UpdateChecker.UpdateCheckResult) {
+        let alert = NSAlert()
+        switch result {
+        case .upToDate:
+            alert.alertStyle = .informational
+            alert.messageText = Loc.updateUpToDateTitle
+            alert.informativeText = Loc.updateUpToDateBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        case .updateAvailable(let latest):
+            latestAvailableVersion = latest
+            alert.alertStyle = .informational
+            alert.messageText = Loc.updateAvailableTitle
+            alert.informativeText = Loc.updateAvailableBody(
+                current: UpdateChecker.currentVersion,
+                latest: latest
+            )
+            alert.addButton(withTitle: Loc.buttonUpdate)
+            alert.addButton(withTitle: Loc.buttonCancel)
+            if alert.runModal() == .alertFirstButtonReturn {
+                openUpdatePage()
+            }
+        case .failed:
+            alert.alertStyle = .warning
+            alert.messageText = Loc.updateCheckFailedTitle
+            alert.informativeText = Loc.updateCheckFailedBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        }
+    }
+
     @objc func openPreferences() {
         if preferencesWindowController == nil {
             preferencesWindowController = PreferencesWindowController(
@@ -615,6 +698,9 @@ final class StatusBarController: NSObject {
                 },
                 onSessionStyleChange: { [weak self] in
                     self?.refreshStatusItemIcons()
+                },
+                onCheckForUpdates: { [weak self] in
+                    self?.checkForUpdates()
                 }
             )
         }
@@ -1375,12 +1461,12 @@ enum StatusIcon {
         }
     }
 
-    /// 圆形大像素块：上下边各 2 个、中间各 4 个大像素（去四角），像素间以暗色分隔线区分。
+    /// 方形大像素块：完整的 4×4，像素间以暗色分隔线区分。
     private static let blockMask = [
-        [false, true, true, false],
         [true, true, true, true],
         [true, true, true, true],
-        [false, true, true, false]
+        [true, true, true, true],
+        [true, true, true, true]
     ]
 
     private static func pixelBlockImage(for state: StatusState) -> NSImage {
@@ -1392,47 +1478,107 @@ enum StatusIcon {
         context?.imageInterpolation = .none
 
         let color = pixelColor(for: state)
-        let grid = color.blended(withFraction: 0.38, of: .black) ?? color
         let rows = blockMask.count
         let cols = 4
         let pitch: CGFloat = 4
+        let cell: CGFloat = 3
         let total = CGFloat(cols) * pitch
         let origin = NSPoint(x: (18 - total) / 2, y: (18 - total) / 2)
 
-        // 大像素块本体
+        // 大像素块本体（每格之间留 1px 空隙，pixel 分得更清）
         color.setFill()
         for row in 0..<rows {
             for column in 0..<cols where maskCell(blockMask, row, column) {
-                NSRect(
-                    x: origin.x + CGFloat(column) * pitch,
-                    y: origin.y + CGFloat(rows - 1 - row) * pitch,
-                    width: pitch,
-                    height: pitch
+                blockCellRect(
+                    row: row,
+                    column: column,
+                    origin: origin,
+                    pitch: pitch,
+                    cell: cell
                 ).fill()
             }
         }
 
-        // 相邻大像素之间画分隔线，让「大像素」看得出来
-        grid.setFill()
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    /// 大像素格的位置：以 pitch 为步进、每格实际占用 `cell`，从而在格于之间留出空隙。
+    private static func blockCellRect(
+        row: Int,
+        column: Int,
+        origin: NSPoint,
+        pitch: CGFloat,
+        cell: CGFloat
+    ) -> NSRect {
+        NSRect(
+            x: origin.x + CGFloat(column) * pitch,
+            y: origin.y + CGFloat(blockMask.count - 1 - row) * pitch,
+            width: cell,
+            height: cell
+        )
+    }
+
+    /// 大像素方块四周的「贪吃蛇」行走路径：沿 4×4 方块外圈顺时针走一圈，每步都是正交相邻格子。
+    private static let blockSnakeLoop: [(row: Int, column: Int)] = [
+        (0, 0), (0, 1), (0, 2), (0, 3),
+        (1, 3), (2, 3), (3, 3),
+        (3, 2), (3, 1), (3, 0),
+        (2, 0), (1, 0)
+    ]
+
+    /// 贪吃蛇身体格数（含蛇头）。
+    private static let blockSnakeLength = 4
+
+    /// 大像素块「贪吃蛇」围边行走的一帧。`headCell` 为蛇头所在的路径格序号（0..<blockSnakeLoop.count）。
+    /// 蛇头最亮，身体逐格变暗，尾巴淡入暗色底块，看起来像一条蛇绕方块转圈。
+    static func pixelBlockSnakeImage(for state: StatusState, headCell: Int) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+
+        let context = NSGraphicsContext.current
+        context?.shouldAntialias = false
+        context?.imageInterpolation = .none
+
+        let color = pixelColor(for: state)
+        let rows = blockMask.count
+        let cols = 4
+        let pitch: CGFloat = 4
+        let cell: CGFloat = 3
+        let total = CGFloat(cols) * pitch
+        let origin = NSPoint(x: (18 - total) / 2, y: (18 - total) / 2)
+
+        // 底块（压暗，让行走的蛇突显出来），每格之间留 1px 空隙
+        let base = color.blended(withFraction: 0.30, of: .black) ?? color
+        base.setFill()
         for row in 0..<rows {
-            for column in 1..<cols where maskCell(blockMask, row, column - 1) && maskCell(blockMask, row, column) {
-                NSRect(
-                    x: origin.x + CGFloat(column) * pitch,
-                    y: origin.y + CGFloat(rows - 1 - row) * pitch,
-                    width: 1,
-                    height: pitch
+            for column in 0..<cols where maskCell(blockMask, row, column) {
+                blockCellRect(
+                    row: row,
+                    column: column,
+                    origin: origin,
+                    pitch: pitch,
+                    cell: cell
                 ).fill()
             }
         }
-        for row in 1..<rows {
-            for column in 0..<cols where maskCell(blockMask, row - 1, column) && maskCell(blockMask, row, column) {
-                NSRect(
-                    x: origin.x + CGFloat(column) * pitch,
-                    y: origin.y + CGFloat(rows - row) * pitch,
-                    width: pitch,
-                    height: 1
-                ).fill()
-            }
+
+        // 蛇身：从蛇头到尾巴逐渐压暗
+        let loopCount = blockSnakeLoop.count
+        for offset in 0..<blockSnakeLength {
+            let index = ((headCell - offset) % loopCount + loopCount) % loopCount
+            let snakeCell = blockSnakeLoop[index]
+            let t = CGFloat(offset) / CGFloat(blockSnakeLength - 1)
+            let segment = color.blended(withFraction: 0.28 * t, of: .black) ?? color
+            segment.setFill()
+            blockCellRect(
+                row: snakeCell.row,
+                column: snakeCell.column,
+                origin: origin,
+                pitch: pitch,
+                cell: cell
+            ).fill()
         }
 
         image.unlockFocus()
@@ -2321,6 +2467,83 @@ enum ClaudeCodeConfigChecker {
             candidates.append(executableDirectory.appendingPathComponent("cc-lights", isDirectory: false))
         }
         return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+}
+
+// MARK: - 版本更新检查
+
+/// 查询 GitHub Releases 最新版本，与本地版本比较，供「检查更新」菜单项/关于页使用。
+enum UpdateChecker {
+    private static let repoOwner = "andyiac"
+    private static let repoName = "cc-lights"
+
+    enum UpdateCheckResult {
+        case upToDate
+        case updateAvailable(String)
+        case failed
+    }
+
+    /// 当前本地安装的版本（来自 Info.plist，如 `0.1.7`）。
+    static var currentVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+            ?? "0.0.0"
+    }
+
+    /// 触发一次网络检查；结果在主线程回调。
+    static func check(completion: @escaping (UpdateCheckResult) -> Void) {
+        guard let url = apiURL else {
+            completion(.failed)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.addValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            guard let data,
+                  let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tag = json["tag_name"] as? String else {
+                completion(.failed)
+                return
+            }
+
+            // tag 形如 "v0.1.7"，去掉 "v" 前缀后参与比较。
+            let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            guard isNewer(latest, than: currentVersion) else {
+                completion(.upToDate)
+                return
+            }
+            completion(.updateAvailable(latest))
+        }.resume()
+    }
+
+    private static var apiURL: URL? {
+        URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest")
+    }
+
+    static var releasePageURL: URL? {
+        URL(string: "https://github.com/\(repoOwner)/\(repoName)/releases/latest")
+    }
+
+    /// 版本号比较：`lhs > rhs`？按点分段取整比较，支持 `0.1.7` 与 `0.10.0`。
+    static func isNewer(_ lhs: String, than rhs: String) -> Bool {
+        let lhsParts = versionParts(lhs)
+        let rhsParts = versionParts(rhs)
+        let count = max(lhsParts.count, rhsParts.count)
+        for index in 0..<count {
+            let left = index < lhsParts.count ? lhsParts[index] : 0
+            let right = index < rhsParts.count ? rhsParts[index] : 0
+            if left != right {
+                return left > right
+            }
+        }
+        return false
+    }
+
+    private static func versionParts(_ version: String) -> [Int] {
+        version.split(separator: ".").compactMap { Int($0) }
     }
 }
 

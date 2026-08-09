@@ -17,7 +17,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         onStyleChange: @escaping (StatusLightStyle) -> Void,
         onLanguageChange: @escaping () -> Void,
         sessionsProvider: @escaping () -> [StatusPayload],
-        onSessionStyleChange: @escaping () -> Void
+        onSessionStyleChange: @escaping () -> Void,
+        onCheckForUpdates: @escaping () -> Void
     ) {
         tabController = PreferencesTabViewController(
             notificationController: notificationController,
@@ -25,7 +26,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
             onStyleChange: onStyleChange,
             onLanguageChange: onLanguageChange,
             sessionsProvider: sessionsProvider,
-            onSessionStyleChange: onSessionStyleChange
+            onSessionStyleChange: onSessionStyleChange,
+            onCheckForUpdates: onCheckForUpdates
         )
 
         let window = NSWindow(contentViewController: tabController)
@@ -88,7 +90,8 @@ final class PreferencesTabViewController: NSTabViewController {
         onStyleChange: @escaping (StatusLightStyle) -> Void,
         onLanguageChange: @escaping () -> Void,
         sessionsProvider: @escaping () -> [StatusPayload],
-        onSessionStyleChange: @escaping () -> Void
+        onSessionStyleChange: @escaping () -> Void,
+        onCheckForUpdates: @escaping () -> Void
     ) {
         generalViewController = GeneralPreferencesViewController(
             initialStyle: initialStyle,
@@ -101,7 +104,7 @@ final class PreferencesTabViewController: NSTabViewController {
             notificationController: notificationController
         )
         integrationViewController = IntegrationPreferencesViewController()
-        aboutViewController = AboutPreferencesViewController()
+        aboutViewController = AboutPreferencesViewController(onCheckForUpdates: onCheckForUpdates)
 
         super.init(nibName: nil, bundle: nil)
         tabStyle = .toolbar
@@ -584,7 +587,10 @@ final class IntegrationPreferencesViewController: PreferencePane {
 // MARK: - 关于
 
 final class AboutPreferencesViewController: PreferencePane {
-    init() {
+    private let onCheckForUpdates: () -> Void
+
+    init(onCheckForUpdates: @escaping () -> Void) {
+        self.onCheckForUpdates = onCheckForUpdates
         super.init(nibName: nil, bundle: nil)
         title = Loc.tabAbout
     }
@@ -626,6 +632,16 @@ final class AboutPreferencesViewController: PreferencePane {
         description.preferredMaxLayoutWidth = contentWidth
         description.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
         stack.addArrangedSubview(description)
+
+        addSpacing(6)
+
+        let checkButton = NSButton(title: Loc.checkForUpdates, target: self, action: #selector(checkForUpdates))
+        checkButton.bezelStyle = .rounded
+        stack.addArrangedSubview(checkButton)
+    }
+
+    @objc private func checkForUpdates() {
+        onCheckForUpdates()
     }
 
     private var appName: String {

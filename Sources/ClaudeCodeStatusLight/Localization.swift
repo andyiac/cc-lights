@@ -336,6 +336,31 @@ enum Loc {
         tr("Not configured — the lights won't change color automatically.", zh: "未配置，指示灯不会自动变色。")
     }
 
+    // 检查更新
+    static var checkForUpdates: String { tr("Check for Updates…", zh: "检查更新…") }
+    static func updateAvailable(_ version: String) -> String {
+        tr("New version \(version) is available", zh: "发现新版本 \(version)")
+    }
+    static var updateUpToDateTitle: String { tr("You're up to date", zh: "已是最新版本") }
+    static var updateUpToDateBody: String {
+        tr("CC Lights is up to date.", zh: "当前已是最新版本的 CC Lights。")
+    }
+    static var updateAvailableTitle: String { tr("A new version is available", zh: "发现新版本") }
+    static func updateAvailableBody(current: String, latest: String) -> String {
+        tr(
+            "You're running \(current). Version \(latest) is available. Open the GitHub Releases page to download it.",
+            zh: "当前版本 \(current)，最新版本 \(latest)。打开 GitHub Releases 页面即可下载。"
+        )
+    }
+    static var buttonUpdate: String { tr("Update", zh: "去更新") }
+    static var updateCheckFailedTitle: String { tr("Update check failed", zh: "检查更新失败") }
+    static var updateCheckFailedBody: String {
+        tr(
+            "Couldn't reach GitHub to check for updates. Please try again later.",
+            zh: "无法访问 GitHub 检查更新，请稍后再试。"
+        )
+    }
+
     // 关于分页
     static var aboutDescription: String {
         tr(
