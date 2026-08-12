@@ -195,7 +195,6 @@ When running from source, use `swift run cc-lights` instead of `cc-lights`.
 | `--cmux-workspace <id>` | | cmux workspace ID or ref used to focus sessions running inside cmux. Auto-detected from `CMUX_WORKSPACE_ID` when available. |
 | `--cmux-surface <id>` | | cmux surface/panel ID or ref used to focus sessions running inside cmux. Auto-detected from `CMUX_SURFACE_ID` when available. |
 | `--cmux-socket <path>` | | cmux socket path for focusing sessions from outside cmux. Auto-detected from `CMUX_SOCKET_PATH` when available. |
-| `--agent <type>` | | Agent type: `claude`, `codex`, `opencode`, `pi`, `cmux`, or `unknown`. Auto-detected from hooks / env vars when omitted; shown as "Agent: …" in hover details. |
 
 ## Local status files
 
@@ -300,10 +299,10 @@ cc-lights hook idle      # Stop
 cc-lights hook remove    # SessionEnd
 
 # OpenCode plugin passes sessionID / cwd explicitly
-cc-lights working --session "$OPENCODE_SESSION_ID" --cwd "$PWD" --agent opencode
+cc-lights working --session "$OPENCODE_SESSION_ID" --cwd "$PWD"
 
 # pi extension passes the pi session ID / cwd / agent type
-cc-lights working --session "$PI_SESSION_ID" --cwd "$PWD" --agent pi
+cc-lights working --session "$PI_SESSION_ID" --cwd "$PWD"
 ```
 
 If you want to call the CLI yourself from a terminal or with `!` inside an agent session, symlink the managed helper onto your `PATH`, for example:

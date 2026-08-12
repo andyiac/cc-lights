@@ -201,7 +201,6 @@ cc-lights path
 | `--cmux-workspace <ID>` | | cmux workspace ID 或 ref；在 cmux 中会自动从 `CMUX_WORKSPACE_ID` 读取。 |
 | `--cmux-surface <ID>` | | cmux surface/panel ID 或 ref；在 cmux 中会自动从 `CMUX_SURFACE_ID` 读取。 |
 | `--cmux-socket <路径>` | | cmux socket 路径；在 cmux 中会自动从 `CMUX_SOCKET_PATH` 读取。 |
-| `--agent <类型>` | | agent 类型：`claude`、`codex`、`opencode`、`pi`、`cmux` 或 `unknown`；省略时根据 hooks / 环境变量自动推断，显示在 hover 详情的「Agent：…」行。 |
 
 `cc-lights` 会自动尝试从 `TERM_PROGRAM`、`TTY`、`SSH_TTY` 和 `tty` 命令推断终端信息；在 cmux 中还会自动读取 `CMUX_WORKSPACE_ID`、`CMUX_SURFACE_ID` 和 `CMUX_SOCKET_PATH`。hook 子进程里 `tty` 通常失效时，会沿父进程链用 `ps` 找回控制终端。Ghostty 通过工作目录定位窗口，无需 TTY。
 
