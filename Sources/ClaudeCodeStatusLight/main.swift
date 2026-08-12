@@ -2983,7 +2983,6 @@ enum OpenCodeConfigChecker {
         """
     }
 }
-}
 
 // MARK: - pi 集成
 
