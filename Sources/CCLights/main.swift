@@ -259,7 +259,8 @@ func resolvedSessionID(from parsed: ParsedCommand, terminalTTY: String? = nil) -
 
     if let sessionID = firstEnvironmentValue(for: [
         "CLAUDE_SESSION_ID",
-        "CLAUDE_CODE_SESSION_ID"
+        "CLAUDE_CODE_SESSION_ID",
+        "PI_SESSION_ID"
     ]) {
         return sessionID
     }

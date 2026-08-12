@@ -356,6 +356,46 @@ enum Loc {
         )
     }
 
+    // pi 集成
+    static var piAutoConfiguredTitle: String {
+        tr("pi integration configured automatically", zh: "已自动配置 pi 集成")
+    }
+    static var piAutoConfiguredBody: String {
+        tr(
+            "The status-light extension was written to ~/.pi/agent/extensions/.\n\nRestart pi for the change to take effect.",
+            zh: "已把状态灯扩展写入 ~/.pi/agent/extensions/。\n\n请重启 pi 使配置生效。"
+        )
+    }
+    static var piConfiguredTitle: String { tr("✅ pi extension installed", zh: "✅ pi 扩展已安装") }
+    static var piNotConfiguredTitle: String {
+        tr("⚠️ No pi extension detected", zh: "⚠️ 未检测到 pi 扩展")
+    }
+    static var piConfiguredBody: String {
+        tr(
+            "The lights will follow pi's status automatically.\n\nTo adjust, edit ~/.pi/agent/extensions/cc-lights.ts.",
+            zh: "状态灯将自动跟随 pi 的状态变化。\n\n如需调整，请编辑 ~/.pi/agent/extensions/cc-lights.ts。"
+        )
+    }
+    static var piNotConfiguredBody: String {
+        tr(
+            "The lights need the pi extension to change color automatically.\n\nClick \"Auto-configure for me\" and the app will write ~/.pi/agent/extensions/cc-lights.ts.",
+            zh: "状态灯需要 pi 扩展才能自动变化颜色。\n\n点击「为我自动配置」后，App 会写入 ~/.pi/agent/extensions/cc-lights.ts。"
+        )
+    }
+    static var piExtensionWrittenTitle: String { tr("✅ pi extension written", zh: "✅ 已写入 pi 扩展") }
+    static var piExtensionWrittenBody: String {
+        tr(
+            "The status-light extension was written to ~/.pi/agent/extensions/cc-lights.ts.\n\nRestart pi for the change to take effect.",
+            zh: "已把状态灯扩展写入 ~/.pi/agent/extensions/cc-lights.ts。\n\n请重启 pi 使配置生效。"
+        )
+    }
+    static var integrationPiHelp: String {
+        tr(
+            "Lights via the extension at ~/.pi/agent/extensions/cc-lights.ts.",
+            zh: "通过 ~/.pi/agent/extensions/cc-lights.ts 扩展驱动。"
+        )
+    }
+
     // Codex 集成
     static var codexAutoConfiguredTitle: String {
         tr("Codex integration configured automatically", zh: "已自动配置 Codex 集成")
