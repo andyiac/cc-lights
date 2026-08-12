@@ -3062,16 +3062,6 @@ enum PiConfigChecker {
         return current.contains(managedCLIPath())
     }
 
-    enum InstallError: LocalizedError {
-        case writeFailed(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .writeFailed(let reason):
-                return reason
-            }
-        }
-    }
 
     /// 生成并幂等写入 pi 扩展文件。返回是否真正写入了改动。
     @discardableResult
