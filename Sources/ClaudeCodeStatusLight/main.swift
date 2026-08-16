@@ -1546,7 +1546,7 @@ enum StatusIcon {
     }
 
     private static func pixelBlockRingImage(for state: StatusState) -> NSImage {
-        blockImage(for: state, mask: blockRingMask, pitch: 2.0, cell: 1.6)
+        blockImage(for: state, mask: blockRingMask, pitch: 2.0, cell: 1.3)
     }
 
     /// 静态大像素块的通用绘制。3×3 用稍大的 pitch/cell 以填满同样的 18pt 图标。
@@ -1560,7 +1560,7 @@ enum StatusIcon {
         image.lockFocus()
 
         let context = NSGraphicsContext.current
-        context?.shouldAntialias = false
+        context?.shouldAntialias = true
         context?.imageInterpolation = .none
 
         let rows = mask.count
