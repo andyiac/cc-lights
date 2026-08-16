@@ -108,6 +108,7 @@ enum Loc {
     static var lightStyleMenu: String { tr("Light style", zh: "灯样式") }
     static var resetSessionToGreen: String { tr("Reset this session to green", zh: "重置此 session 为绿灯") }
     static var clearAllErrors: String { tr("Clear all errors", zh: "清除所有错误") }
+    static var clearAllLights: String { tr("Clear all lights", zh: "清空所有灯") }
     static var preferences: String { tr("Preferences…", zh: "偏好设置…") }
     static var openClaudeCodeContext: String { tr("Open Claude Code context", zh: "打开 Claude Code 上下文") }
     static var quitCCLights: String { tr("Quit CC Lights…", zh: "退出 CC Lights...") }
@@ -158,6 +159,7 @@ enum Loc {
         tr("Couldn't determine which session to reset.", zh: "无法确定要重置的 session。")
     }
     static var clearErrorsFailedTitle: String { tr("Couldn't clear errors", zh: "清除错误失败") }
+    static var clearAllLightsFailedTitle: String { tr("Couldn't clear lights", zh: "清空灯失败") }
     static var readSessionErrorTitle: String { tr("Couldn't read session status", zh: "无法读取 session 状态") }
 
     // 退出确认

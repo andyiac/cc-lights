@@ -499,6 +499,11 @@ final class StatusBarController: NSObject {
         clearErrorsItem.isEnabled = currentSessions.contains { $0.state == .error }
         menu.addItem(clearErrorsItem)
 
+        let clearAllItem = NSMenuItem(title: Loc.clearAllLights, action: #selector(clearAllLights), keyEquivalent: "")
+        clearAllItem.target = self
+        clearAllItem.isEnabled = !currentSessions.isEmpty
+        menu.addItem(clearAllItem)
+
         menu.addItem(.separator())
 
         if let latest = latestAvailableVersion,
@@ -626,6 +631,16 @@ final class StatusBarController: NSObject {
             apply(try StatusFileStore.readAllSessions())
         } catch {
             NSAlert.showError(title: Loc.clearErrorsFailedTitle, message: error.localizedDescription)
+        }
+    }
+
+    /// 清空所有灯：删除全部 session 状态文件，让菜单栏恢复为单个灰色占位灯。
+    @objc private func clearAllLights() {
+        do {
+            try StatusFileStore.removeAllSessions()
+            apply(try StatusFileStore.readAllSessions())
+        } catch {
+            NSAlert.showError(title: Loc.clearAllLightsFailedTitle, message: error.localizedDescription)
         }
     }
 
@@ -1705,10 +1720,15 @@ enum StatusIcon {
 }
 
 final class StatusFileMonitor {
+    /// idle 状态文件存活超过该时长即视为残留（SessionEnd 未触发），周期性兜底删除。
+    private static let idleSessionMaxAge: TimeInterval = 10 * 60
+    /// 所有状态文件的兜底上限，与启动时的清理阈值一致。
+    private static let staleSessionMaxAge: TimeInterval = 24 * 60 * 60
     private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.StatusFileMonitor")
     private let onChange: ([StatusPayload]) -> Void
     private var source: DispatchSourceFileSystemObject?
     private var cmuxPoller: DispatchSourceTimer?
+    private var pruneTimer: DispatchSourceTimer?
     private var lastDeliveredPayloads: [StatusPayload]?
 
     init(onChange: @escaping ([StatusPayload]) -> Void) {
@@ -1720,6 +1740,7 @@ final class StatusFileMonitor {
             self.readLatestPayloads()
             self.startMonitoringDirectory()
             self.startPollingCmuxSessions()
+            self.startPruningGhostSessions()
         }
     }
 
@@ -1727,6 +1748,7 @@ final class StatusFileMonitor {
         queue.async {
             self.cancelCurrentSource()
             self.cancelCmuxPoller()
+            self.cancelPruneTimer()
         }
     }
 
@@ -1842,6 +1864,38 @@ final class StatusFileMonitor {
         }
         cmuxPoller = timer
         timer.resume()
+    }
+
+    /// 周期性兜底清理：SessionEnd 未触发时（强杀/关终端/崩溃）留下的 idle 幽灵灯
+    /// 会在 10 分钟后消失，其余状态的残留仍按 24 小时上限清理。
+    private func startPruningGhostSessions() {
+        cancelPruneTimer()
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 60, repeating: 60)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.pruneGhostSessions()
+        }
+        pruneTimer = timer
+        timer.resume()
+    }
+
+    private func pruneGhostSessions() {
+        do {
+            let removedIdle = try StatusFileStore.pruneIdle(olderThan: Self.idleSessionMaxAge)
+            let removedStale = try StatusFileStore.pruneStale(olderThan: Self.staleSessionMaxAge)
+            if removedIdle + removedStale > 0 {
+                readLatestPayloads()
+            }
+        } catch {
+            fputs("清理残留 session 失败：\(error.localizedDescription)\n", stderr)
+        }
+    }
+
+    private func cancelPruneTimer() {
+        pruneTimer?.cancel()
+        pruneTimer = nil
     }
 
     private func cancelCurrentSource() {

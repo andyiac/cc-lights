@@ -167,6 +167,55 @@ final class StatusPayloadTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
+    func testPruneIdleRemovesOnlyStaleIdleSessions() throws {
+        let staleIdleID = "test-stale-idle-\(UUID().uuidString)"
+        let freshIdleID = "test-fresh-idle-\(UUID().uuidString)"
+        let staleWorkingID = "test-stale-working-\(UUID().uuidString)"
+        let staleIdleURL = StatusFileStore.sessionFileURL(for: staleIdleID)
+        let freshIdleURL = StatusFileStore.sessionFileURL(for: freshIdleID)
+        let staleWorkingURL = StatusFileStore.sessionFileURL(for: staleWorkingID)
+        defer {
+            try? FileManager.default.removeItem(at: staleIdleURL)
+            try? FileManager.default.removeItem(at: freshIdleURL)
+            try? FileManager.default.removeItem(at: staleWorkingURL)
+        }
+
+        let staleDate = Date(timeIntervalSinceNow: -3600)
+        try StatusFileStore.write(StatusPayload(state: .idle, sessionID: staleIdleID, updatedAt: staleDate))
+        try StatusFileStore.write(StatusPayload(state: .idle, sessionID: freshIdleID))
+        try StatusFileStore.write(StatusPayload(state: .working, sessionID: staleWorkingID, updatedAt: staleDate))
+
+        try StatusFileStore.pruneIdle(olderThan: 1800)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staleIdleURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: freshIdleURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staleWorkingURL.path))
+    }
+
+    func testRemoveAllSessionsDeletesEverySessionFile() throws {
+        let id1 = "test-clear-1-\(UUID().uuidString)"
+        let id2 = "test-clear-2-\(UUID().uuidString)"
+        let url1 = StatusFileStore.sessionFileURL(for: id1)
+        let url2 = StatusFileStore.sessionFileURL(for: id2)
+        defer {
+            try? FileManager.default.removeItem(at: url1)
+            try? FileManager.default.removeItem(at: url2)
+        }
+
+        try StatusFileStore.write(StatusPayload(state: .working, sessionID: id1))
+        try StatusFileStore.write(StatusPayload(state: .idle, sessionID: id2))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url1.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url2.path))
+
+        let removed = try StatusFileStore.removeAllSessions()
+        XCTAssertGreaterThanOrEqual(removed, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url1.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url2.path))
+
+        // 再次清空应幂等，返回 0
+        XCTAssertEqual(try StatusFileStore.removeAllSessions(), 0)
+    }
+
     func testAggregateUsesHighestPriorityState() {
         let payloads = [
             StatusPayload(state: .idle, sessionID: "idle"),

@@ -143,6 +143,30 @@ public enum StatusFileStore {
     /// 返回被删除的数量。
     @discardableResult
     public static func pruneStale(olderThan maxAge: TimeInterval) throws -> Int {
+        let cutoff = Date().addingTimeInterval(-maxAge)
+        var removed = try pruneFiles { $0.updatedAt < cutoff }
+
+        if FileManager.default.fileExists(atPath: statusFileURL.path),
+           let legacyPayload = try? readPayload(at: statusFileURL),
+           legacyPayload.updatedAt < cutoff {
+            try FileManager.default.removeItem(at: statusFileURL)
+            removed += 1
+        }
+
+        return removed
+    }
+
+    /// 清理 idle 状态且超过 maxAge 未更新的 session 文件。
+    /// idle 意味着会话已结束（Stop hook 已写入），正常几秒内就会被 SessionEnd 的 remove 删除；
+    /// 存活超过 maxAge 的基本是 SessionEnd 未触发的残留（强杀/关终端/崩溃），由 App 周期性兜底清理。
+    /// 返回被删除的数量。
+    @discardableResult
+    public static func pruneIdle(olderThan maxAge: TimeInterval) throws -> Int {
+        let cutoff = Date().addingTimeInterval(-maxAge)
+        return try pruneFiles { $0.state == .idle && $0.updatedAt < cutoff }
+    }
+
+    private static func pruneFiles(where shouldRemove: (StatusPayload) -> Bool) throws -> Int {
         try ensureDirectoryExists()
 
         let urls = try FileManager.default.contentsOfDirectory(
@@ -151,22 +175,12 @@ public enum StatusFileStore {
         )
         .filter { $0.pathExtension == "json" }
 
-        let cutoff = Date().addingTimeInterval(-maxAge)
         var removed = 0
         for url in urls {
-            guard let payload = try? readPayload(at: url) else {
+            guard let payload = try? readPayload(at: url), shouldRemove(payload) else {
                 continue
             }
-            if payload.updatedAt < cutoff {
-                try FileManager.default.removeItem(at: url)
-                removed += 1
-            }
-        }
-
-        if FileManager.default.fileExists(atPath: statusFileURL.path),
-           let legacyPayload = try? readPayload(at: statusFileURL),
-           legacyPayload.updatedAt < cutoff {
-            try FileManager.default.removeItem(at: statusFileURL)
+            try FileManager.default.removeItem(at: url)
             removed += 1
         }
 
@@ -182,6 +196,31 @@ public enum StatusFileStore {
         }
         try FileManager.default.removeItem(at: url)
         return true
+    }
+
+    /// 删除所有 session 状态文件与遗留 status.json，灯全部熄灭。返回被删除的数量。
+    @discardableResult
+    public static func removeAllSessions() throws -> Int {
+        try ensureDirectoryExists()
+
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: sessionsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.pathExtension == "json" }
+
+        var removed = 0
+        for url in urls {
+            try FileManager.default.removeItem(at: url)
+            removed += 1
+        }
+
+        if FileManager.default.fileExists(atPath: statusFileURL.path) {
+            try FileManager.default.removeItem(at: statusFileURL)
+            removed += 1
+        }
+
+        return removed
     }
 
     public static func sessionFileURL(for sessionID: String) -> URL {
