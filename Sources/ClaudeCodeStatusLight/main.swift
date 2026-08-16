@@ -287,7 +287,7 @@ final class StatusBarController: NSObject {
 
                     if self.usesSnakeAnimation(for: payload) {
                         let style = self.resolvedStyle(for: payload)
-                        let headCell = Int(elapsed / self.snakeStep) % style.pixelBlockSnakeLoopLength
+                        let headCell = Int(elapsed / style.pixelBlockSnakeStep) % style.pixelBlockSnakeLoopLength
                         button.image = StatusIcon.pixelBlockSnakeImage(for: payload.state, style: style, headCell: headCell)
                         button.alphaValue = 1.0
                         hasAnimation = true
@@ -1022,11 +1022,9 @@ final class StatusBarController: NSObject {
         alert.runModal()
     }
 
+    /// 稳定排序：灯位只由会话身份（终端 TTY，其次 sessionID）决定，不随状态/时间变化。
     private func sessionSort(_ lhs: StatusPayload, _ rhs: StatusPayload) -> Bool {
-        if lhs.state.priority == rhs.state.priority {
-            return lhs.updatedAt > rhs.updatedAt
-        }
-        return lhs.state.priority > rhs.state.priority
+        StatusFileStore.stableSortKey(lhs) < StatusFileStore.stableSortKey(rhs)
     }
 
     private func relativeTimeString(since date: Date) -> String {
@@ -1059,6 +1057,7 @@ enum StatusLightStyle: String, CaseIterable {
     case pixelCat
     case pixelBlock
     case pixelBlock3x3
+    case pixelBlockRing
 
     private static let defaultsKey = "statusLightStyle"
 
@@ -1099,6 +1098,8 @@ enum StatusLightStyle: String, CaseIterable {
             return Loc.lightStylePixelBlock
         case .pixelBlock3x3:
             return Loc.lightStylePixelBlock3x3
+        case .pixelBlockRing:
+            return Loc.lightStylePixelBlockRing
         }
     }
 
@@ -1107,12 +1108,22 @@ enum StatusLightStyle: String, CaseIterable {
 
     /// 是否为带「贪吃蛇」动画的大像素块样式。
     var isPixelBlockStyle: Bool {
-        self == .pixelBlock || self == .pixelBlock3x3
+        self == .pixelBlock || self == .pixelBlock3x3 || self == .pixelBlockRing
     }
 
     /// 该大像素块样式围边行走路径的格数。
     var pixelBlockSnakeLoopLength: Int {
         StatusIcon.blockSnakeLoopLength(for: self)
+    }
+
+    /// 该样式贪吃蛇的走格速度（秒/格）：格数多的圆环走快些，保证转圈节奏接近方块样式。
+    var pixelBlockSnakeStep: TimeInterval {
+        switch self {
+        case .pixelBlockRing:
+            return 0.07
+        default:
+            return 0.15
+        }
     }
 }
 
@@ -1165,6 +1176,8 @@ enum StatusIcon {
             return pixelBlockImage(for: state)
         case .pixelBlock3x3:
             return pixelBlock3x3Image(for: state)
+        case .pixelBlockRing:
+            return pixelBlockRingImage(for: state)
         }
     }
 
@@ -1510,12 +1523,30 @@ enum StatusIcon {
         [true, true, true]
     ]
 
+    /// 空心圆：9×9 网格上的单层圆形圆环（半径带 3.1~4.3），顶行只有 3 个点、侧面 3 个点，
+    /// 圆顶弧度接近经典像素圆，整圈单层、厚度均匀。
+    private static let blockRingMask = [
+        [false, false, false, true, true, true, false, false, false],
+        [false, true, true, true, false, true, true, true, false],
+        [false, true, false, false, false, false, false, true, false],
+        [true, true, false, false, false, false, false, true, true],
+        [true, false, false, false, false, false, false, false, true],
+        [true, true, false, false, false, false, false, true, true],
+        [false, true, false, false, false, false, false, true, false],
+        [false, true, true, true, false, true, true, true, false],
+        [false, false, false, true, true, true, false, false, false]
+    ]
+
     private static func pixelBlockImage(for state: StatusState) -> NSImage {
         blockImage(for: state, mask: blockMask, pitch: 4, cell: 3)
     }
 
     private static func pixelBlock3x3Image(for state: StatusState) -> NSImage {
         blockImage(for: state, mask: block3x3Mask, pitch: 5, cell: 4)
+    }
+
+    private static func pixelBlockRingImage(for state: StatusState) -> NSImage {
+        blockImage(for: state, mask: blockRingMask, pitch: 2.0, cell: 1.6)
     }
 
     /// 静态大像素块的通用绘制。3×3 用稍大的 pitch/cell 以填满同样的 18pt 图标。
@@ -1563,6 +1594,11 @@ enum StatusIcon {
         )
     }
 
+    /// 画一个圆点（在格内画内切圆），而不是方方正正的像素块。
+    private static func fillDot(rect: NSRect) {
+        NSBezierPath(ovalIn: rect).fill()
+    }
+
     private static func fillBlock(
         _ mask: [[Bool]],
         rows: Int,
@@ -1573,14 +1609,14 @@ enum StatusIcon {
     ) {
         for row in 0..<rows {
             for column in 0..<cols where maskCell(mask, row, column) {
-                blockCellRect(
+                fillDot(rect: blockCellRect(
                     row: row,
                     column: column,
                     rows: rows,
                     origin: origin,
                     pitch: pitch,
                     cell: cell
-                ).fill()
+                ))
             }
         }
     }
@@ -1601,12 +1637,25 @@ enum StatusIcon {
         (1, 0)
     ]
 
+    /// 空心圆环的「贪吃蛇」行走路径：覆盖单层圆环全部 32 格的顺时针回路，
+    /// 每步都是正交相邻格子（由 9×9 圆环格图搜索得到）。
+    private static let blockRingSnakeLoop: [(row: Int, column: Int)] = [
+        (0, 3), (1, 3), (1, 2), (1, 1), (2, 1), (3, 1),
+        (3, 0), (4, 0), (5, 0), (5, 1), (6, 1), (7, 1),
+        (7, 2), (7, 3), (8, 3), (8, 4), (8, 5), (7, 5),
+        (7, 6), (7, 7), (6, 7), (5, 7), (5, 8), (4, 8),
+        (3, 8), (3, 7), (2, 7), (1, 7), (1, 6), (1, 5),
+        (0, 5), (0, 4)
+    ]
+
     static func blockSnakeLoopLength(for style: StatusLightStyle) -> Int {
         switch style {
         case .pixelBlock:
             return blockSnakeLoop.count
         case .pixelBlock3x3:
             return block3x3SnakeLoop.count
+        case .pixelBlockRing:
+            return blockRingSnakeLoop.count
         default:
             return 0
         }
@@ -1619,7 +1668,7 @@ enum StatusIcon {
         image.lockFocus()
 
         let context = NSGraphicsContext.current
-        context?.shouldAntialias = false
+        context?.shouldAntialias = true
         context?.imageInterpolation = .none
 
         let color = pixelColor(for: state)
@@ -1649,6 +1698,14 @@ enum StatusIcon {
             cell = 4
             rows = block3x3Mask.count
             cols = 3
+        case .pixelBlockRing:
+            mask = blockRingMask
+            loop = blockRingSnakeLoop
+            length = 8
+            pitch = 2.0
+            cell = 1.3
+            rows = blockRingMask.count
+            cols = blockRingMask.count
         default:
             mask = blockMask
             loop = blockSnakeLoop
@@ -1675,14 +1732,14 @@ enum StatusIcon {
             let t = CGFloat(offset) / CGFloat(length - 1)
             let segment = color.blended(withFraction: 0.28 * t, of: .black) ?? color
             segment.setFill()
-            blockCellRect(
+            fillDot(rect: blockCellRect(
                 row: snakeCell.row,
                 column: snakeCell.column,
                 rows: rows,
                 origin: origin,
                 pitch: pitch,
                 cell: cell
-            ).fill()
+            ))
         }
 
         image.unlockFocus()
@@ -1846,12 +1903,7 @@ final class StatusFileMonitor {
             }
         }
 
-        return mergedBySessionID.values.sorted { lhs, rhs in
-            if lhs.state.priority == rhs.state.priority {
-                return lhs.updatedAt > rhs.updatedAt
-            }
-            return lhs.state.priority > rhs.state.priority
-        }
+        return StatusFileStore.stableSort(Array(mergedBySessionID.values))
     }
 
     private func startPollingCmuxSessions() {

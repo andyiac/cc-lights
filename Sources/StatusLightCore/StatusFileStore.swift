@@ -61,12 +61,19 @@ public enum StatusFileStore {
             payloads.append(legacyPayload)
         }
 
-        return payloads.sorted { lhs, rhs in
-            if lhs.state.priority == rhs.state.priority {
-                return lhs.updatedAt > rhs.updatedAt
-            }
-            return lhs.state.priority > rhs.state.priority
-        }
+        return stableSort(payloads)
+    }
+
+    /// 稳定排序：灯的顺序只由会话身份（终端 TTY，其次 sessionID）决定，
+    /// 不随状态优先级、更新时间变化，保证菜单栏灯位固定不跳。
+    public static func stableSort(_ payloads: [StatusPayload]) -> [StatusPayload] {
+        payloads.sorted { stableSortKey($0) < stableSortKey($1) }
+    }
+
+    /// 会话的稳定排序键：有 TTY 用 TTY（/dev/ttys005 天然按终端号排），否则退回 sessionID。
+    public static func stableSortKey(_ payload: StatusPayload) -> String {
+        let tty = payload.terminalTTY ?? ""
+        return tty.isEmpty ? payload.sessionID : tty
     }
 
     public static func write(_ payload: StatusPayload) throws {

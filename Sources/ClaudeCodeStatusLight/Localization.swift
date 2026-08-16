@@ -96,6 +96,7 @@ enum Loc {
     static var lightStylePixelCat: String { tr("Cat", zh: "像素猫咪") }
     static var lightStylePixelBlock: String { tr("Blocks", zh: "大像素块") }
     static var lightStylePixelBlock3x3: String { tr("Blocks 3×3", zh: "3×3 大像素块") }
+    static var lightStylePixelBlockRing: String { tr("Hollow Circle", zh: "空心圆") }
 
     // 状态栏菜单
     static var noSession: String { tr("No Claude Code session", zh: "无 Claude Code session") }

@@ -216,6 +216,27 @@ final class StatusPayloadTests: XCTestCase {
         XCTAssertEqual(try StatusFileStore.removeAllSessions(), 0)
     }
 
+    func testStableSortOrdersByTTYNotPriorityOrUpdateTime() throws {
+        let newer = Date()
+        let older = Date(timeIntervalSinceNow: -3600)
+
+        // 按优先级和更新时间排序，ttys005 的 idle 应排在 ttys016 的 working 之前（稳定键优先）
+        let payloads = [
+            StatusPayload(state: .working, sessionID: "b", terminalTTY: "/dev/ttys016", updatedAt: newer),
+            StatusPayload(state: .idle, sessionID: "a", terminalTTY: "/dev/ttys005", updatedAt: older)
+        ]
+
+        let sorted = StatusFileStore.stableSort(payloads)
+        XCTAssertEqual(sorted.map(\.terminalTTY), ["/dev/ttys005", "/dev/ttys016"])
+
+        // 无 TTY 时退回 sessionID 排序
+        let noTTY = [
+            StatusPayload(state: .working, sessionID: "zz", updatedAt: newer),
+            StatusPayload(state: .idle, sessionID: "aa", updatedAt: older)
+        ]
+        XCTAssertEqual(StatusFileStore.stableSort(noTTY).map(\.sessionID), ["aa", "zz"])
+    }
+
     func testAggregateUsesHighestPriorityState() {
         let payloads = [
             StatusPayload(state: .idle, sessionID: "idle"),
