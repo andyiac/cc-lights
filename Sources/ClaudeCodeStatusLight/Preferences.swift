@@ -492,7 +492,7 @@ final class NotificationsPreferencesViewController: PreferencePane {
 
 // MARK: - 集成
 
-/// 「集成」分页：展示三个 AI 编码工具（Claude Code / Codex / OpenCode）各自的状态灯
+/// 「集成」分页：展示四个 AI 编码工具（Claude Code / Codex / OpenCode / pi）各自的状态灯
 /// 接入配置状态，并提供「自动配置 / 重新检查 / 打开配置文件」操作。
 final class IntegrationPreferencesViewController: PreferencePane {
     /// 一个工具的配置状态与操作，抽象自三个 ConfigChecker 的公共形状。
@@ -556,8 +556,19 @@ final class IntegrationPreferencesViewController: PreferencePane {
                 self?.openFile(url)
             }
         )
+        let pi = ToolConfig(
+            name: "pi",
+            help: Loc.integrationPiHelp,
+            isConfigured: { PiConfigChecker.isConfigured() },
+            recheck: { PiConfigChecker.check() },
+            install: { PiConfigChecker.installExtensionWithUI() },
+            openFile: { [weak self] in
+                let url = PiConfigChecker.extensionFileURL
+                self?.openFile(url)
+            }
+        )
 
-        toolConfigs = [claude, codex, opencode]
+        toolConfigs = [claude, codex, opencode, pi]
         for (index, config) in toolConfigs.enumerated() {
             addSectionHeader(config.name)
             stack.addArrangedSubview(makeSection(for: index))

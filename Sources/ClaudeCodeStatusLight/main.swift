@@ -41,7 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CodexConfigChecker.setUpHooksOnLaunch()
         // opencode 无 CLI hooks，改用插件订阅会话事件，自动写入 ~/.config/opencode/plugins/。
         OpenCodeConfigChecker.setUpOnLaunch()
-
+        // pi 无 CLI hooks，改用 TypeScript 扩展订阅事件，自动写入 ~/.pi/agent/extensions/。
+        PiConfigChecker.setUpOnLaunch()
         let monitor = StatusFileMonitor { [weak controller] payloads in
             controller?.apply(payloads)
         }
@@ -2072,8 +2073,8 @@ enum CmuxClaudeSessionStore {
 }
 
 /// 监听 ~/.claude 目录变化，实时反馈 hook 是否已配置（盯目录而非文件，兼容编辑器的原子替换）。
-/// 监视各工具配置目录（~/.claude、~/.codex、~/.config/opencode/plugins），
-/// 任一变化都触发一次回调（刷新「集成」分页三块状态）。
+/// 监视各工具配置目录（~/.claude、~/.codex、~/.config/opencode/plugins、~/.pi/agent/extensions），
+/// 任一变化都触发一次回调（刷新「集成」分页四块状态）。
 final class IntegrationsConfigMonitor {
     private let queue = DispatchQueue(label: "ClaudeCodeStatusLight.IntegrationsMonitor")
     private let onChange: () -> Void
@@ -2082,7 +2083,9 @@ final class IntegrationsConfigMonitor {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude"),
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex"),
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/opencode/plugins")
+            .appendingPathComponent(".config/opencode/plugins"),
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".pi/agent/extensions")
     ]
 
     init(onChange: @escaping () -> Void) {
@@ -3083,6 +3086,197 @@ enum OpenCodeConfigChecker {
             },
           };
         };
+        """
+    }
+}
+
+// MARK: - pi 集成
+
+/// 管理 pi coding agent 的状态灯扩展。pi 没有 CLI hooks，通过 TypeScript 扩展
+/// 订阅生命期事件；扩展放在 `~/.pi/agent/extensions/`，pi 启动时自动加载。
+enum PiConfigChecker {
+    private static let piAgentDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".pi/agent", isDirectory: true)
+    private static let extensionsDirectory = piAgentDirectory
+        .appendingPathComponent("extensions", isDirectory: true)
+    private static let extensionFileName = "cc-lights.ts"
+
+    /// 供偏好设置「集成」分页打开/定位扩展文件使用。
+    static var extensionFileURL: URL {
+        extensionsDirectory.appendingPathComponent(extensionFileName, isDirectory: false)
+    }
+
+    private static let hasAutoConfiguredKey = "hasAutoConfiguredPiExtension"
+
+    static func setUpOnLaunch() {
+        guard piSeemsInstalled() else {
+            return
+        }
+        _ = ClaudeCodeConfigChecker.installManagedCLI()
+
+        let firstRun = !UserDefaults.standard.bool(forKey: hasAutoConfiguredKey)
+        UserDefaults.standard.set(true, forKey: hasAutoConfiguredKey)
+
+        if isConfigured() {
+            _ = try? installExtension()
+            return
+        }
+
+        guard firstRun else { return }
+
+        if (try? installExtension()) == true {
+            notifyAutoConfigured()
+        }
+    }
+
+    /// pi 是否可能已安装：检查 ~/.pi/agent 目录是否存在。
+    static func piSeemsInstalled() -> Bool {
+        FileManager.default.fileExists(atPath: piAgentDirectory.path)
+    }
+
+    private static func notifyAutoConfigured() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = Loc.piAutoConfiguredTitle
+            alert.informativeText = Loc.piAutoConfiguredBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        }
+    }
+
+    static func check() {
+        let configured = isConfigured()
+        let alert = NSAlert()
+        alert.alertStyle = configured ? .informational : .warning
+        alert.messageText = configured ? Loc.piConfiguredTitle : Loc.piNotConfiguredTitle
+        alert.informativeText = configured ? Loc.piConfiguredBody : Loc.piNotConfiguredBody
+        if !configured {
+            alert.addButton(withTitle: Loc.autoConfigureButton)
+        }
+        alert.addButton(withTitle: Loc.buttonOK)
+        if !configured, alert.runModal() == .alertFirstButtonReturn {
+            installExtensionWithUI()
+        }
+    }
+
+    static func isConfigured() -> Bool {
+        guard let current = try? String(contentsOf: extensionFileURL, encoding: .utf8) else {
+            return false
+        }
+        // 已安装且指向当前托管 CLI 路径才算已配置（路径变了需刷新）。
+        return current.contains(managedCLIPath())
+    }
+
+
+    /// 生成并幂等写入 pi 扩展文件。返回是否真正写入了改动。
+    @discardableResult
+    static func installExtension() throws -> Bool {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: extensionsDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let content = extensionSource(cliPath: managedCLIPath())
+
+        let url = extensionFileURL
+        if let existing = try? String(contentsOf: url, encoding: .utf8),
+           existing == content {
+            return false
+        }
+
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        return true
+    }
+
+    /// 扩展内 `pi.exec` 需要的 CLI 裸路径（argv 数组不经过 shell）。
+    private static func managedCLIPath() -> String {
+        if let url = ClaudeCodeConfigChecker.existingManagedCLIURL() ?? bundledStatusctlURL() {
+            return url.path
+        }
+        return "cc-lights"
+    }
+
+    private static func bundledStatusctlURL() -> URL? {
+        let fileManager = FileManager.default
+        var candidates: [URL] = []
+        if let resourceURL = Bundle.main.resourceURL {
+            candidates.append(resourceURL.appendingPathComponent("cc-lights", isDirectory: false))
+        }
+        if let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent() {
+            candidates.append(executableDirectory.appendingPathComponent("cc-lights", isDirectory: false))
+        }
+        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+
+    static func installExtensionWithUI() {
+        do {
+            let didChange = try installExtension()
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = didChange ? Loc.piExtensionWrittenTitle : Loc.piConfiguredTitle
+            alert.informativeText = didChange ? Loc.piExtensionWrittenBody : Loc.hooksNoChangeBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        } catch {
+            NSAlert.showError(title: Loc.writeConfigFailedTitle, message: error.localizedDescription)
+        }
+    }
+
+    /// 生成 pi 扩展源码。扩展通过订阅 pi 事件驱动状态灯：
+    /// agent_start → working, agent_settled → idle, session_shutdown → remove。
+    static func extensionSource(cliPath: String) -> String {
+        """
+        // CC Lights status extension for pi.
+        // Generated by CC Lights — do not edit manually; the app rewrites this file on each launch.
+        // It maps pi lifecycle events to the CC Lights status via the bundled CLI.
+
+        const SESSION_ID = process.env.PI_SESSION_ID ?? "pi-default";
+        const CWD = process.env.PI_CWD ?? process.cwd();
+
+        function status(pi, args) {
+          pi.exec("\(cliPath)", [
+            ...args,
+            "--session", SESSION_ID,
+            "--cwd", CWD,
+          ]).catch(() => {
+            // Never let a status sync failure break pi.
+          });
+        }
+
+        export default function (pi) {
+          // Mark session as working when agent starts a new run
+          pi.on("agent_start", () => {
+            status(pi, ["working"]);
+          });
+
+          // Mark session as idle when agent fully settles (no retries or queued continuations)
+          pi.on("agent_settled", () => {
+            status(pi, ["idle"]);
+          });
+
+          // Clean up on session shutdown
+          pi.on("session_shutdown", () => {
+            status(pi, ["remove"]);
+          });
+
+          // Mark waiting when tools that require user input are called
+          pi.on("tool_call", (event) => {
+            if (event.toolName === "permission" ||
+                event.toolName.includes("confirm") ||
+                event.toolName.includes("prompt")) {
+              status(pi, ["waiting", "--message", "等待你的操作"]);
+            }
+          });
+
+          // Detect errors from tool results
+          pi.on("tool_result", (event) => {
+            if (event.isError) {
+              status(pi, ["error", "--task", event.toolName]);
+            }
+          });
+        }
         """
     }
 }

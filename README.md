@@ -2,7 +2,7 @@
 
 # CC Lights
 
-### Traffic lights for Claude Code, Codex, and OpenCode in your menu bar — glance to see if each session is working, waiting, or errored; click to jump straight there
+### Traffic lights for Claude Code, Codex, OpenCode, and pi in your menu bar — glance to see if each session is working, waiting, or errored; click to jump straight there
 
 <img src="Resources/AppIcon.png" width="120" alt="CC Lights — AI Coding Status Light for macOS" />
 
@@ -10,16 +10,16 @@
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
 [![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#features)
 [![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
-[![Also works with Codex & OpenCode](https://img.shields.io/badge/also-Codex%20%26%20OpenCode-blue)](#integrating-with-coding-agents)
+[![Also works with Codex, OpenCode & pi](https://img.shields.io/badge/also-Codex%20%26%20OpenCode%20%26%20pi-blue)](#integrating-with-coding-agents)
 [![Download .dmg](https://img.shields.io/badge/download-.dmg-blue?logo=apple&logoColor=white)](https://github.com/andyiac/cc-lights/releases/latest)
 
 **English** · [中文](README.zh-CN.md)
 
 </div>
 
-**Claude Code Status Light** (**CC Lights**) is a lightweight **macOS menu bar app** that shows the live status of one or more **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[Codex](https://developers.openai.com/codex/)** , and **[OpenCode](https://opencode.ai)** sessions as small, color-coded **traffic lights** — green while working or idle, yellow when it needs your input, red on error, and gray when offline.
+**Claude Code Status Light** (**CC Lights**) is a lightweight **macOS menu bar app** that shows the live status of one or more **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[Codex](https://developers.openai.com/codex/)**, **[OpenCode](https://opencode.ai)**, and **[pi](https://pi.dev)** sessions as small, color-coded **traffic lights** — green while working or idle, yellow when it needs your input, red on error, and gray when offline.
 
-Keep your AI coding agents running in your terminal or editor and stop switching back just to check on them: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. **Click a light to jump straight to the exact session that needs you** — the right **Terminal.app, iTerm2, Ghostty, or cmux** tab, window, or pane. Status updates are driven by **Claude Code / Codex hooks** and the **OpenCode plugin** through a tiny bundled CLI, `cc-lights`.
+Keep your AI coding agents running in your terminal or editor and stop switching back just to check on them: a glance at the menu bar tells you whether each session is **working, waiting for a decision, idle, offline, or blocked by an error**. **Click a light to jump straight to the exact session that needs you** — the right **Terminal.app, iTerm2, Ghostty, or cmux** tab, window, or pane. Status updates are driven by **Claude Code / Codex hooks**, the **OpenCode plugin**, and the **pi extension** through a tiny bundled CLI, `cc-lights`.
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=yQwQsnS-PSc">
@@ -41,11 +41,11 @@ Keep your AI coding agents running in your terminal or editor and stop switching
 ## Features
 
 - **One-click jump to the right session** — click any light to focus its Terminal.app, iTerm2, Ghostty, or cmux tab / window / pane. Perfect for pouncing on a session that is waiting for your input.
-- **Per-session status lights** — a separate menu bar light for every tracked Claude Code / Codex / OpenCode session.
-- **Multi-agent support** — status driven by Claude Code hooks, Codex hooks, and the OpenCode plugin.
+- **Per-session status lights** — a separate menu bar light for every tracked Claude Code / Codex / OpenCode / pi session.
+- **Multi-agent support** — status driven by Claude Code hooks, Codex hooks, the OpenCode plugin, and the pi extension.
 - **Traffic-light cues** — color and animation make the state obvious at a glance: breathing green while working, solid yellow when waiting for you, flashing red on error, gray when offline.
 - **Native macOS notifications** — get notified the moment a session needs a decision or hits an API error.
-- **Zero-config integration** — on first launch the app installs its `cc-lights` CLI and wires up the Claude Code hooks in `~/.claude/settings.json`, Codex hooks in `~/.codex/hooks.json`, and the OpenCode plugin in `~/.config/opencode/plugins/` automatically (each with a backup).
+- **Zero-config integration** — on first launch the app installs its `cc-lights` CLI and wires up the Claude Code hooks in `~/.claude/settings.json`, Codex hooks in `~/.codex/hooks.json`, the OpenCode plugin in `~/.config/opencode/plugins/`, and the pi extension in `~/.pi/agent/extensions/` automatically (each with a backup).
 - **Preferences window** — a macOS System Settings / Shottr-style window for launch-at-login, light style, notifications, and integration.
 - **Round or pixel-art lights** — pick a style in Preferences; the choice is remembered across launches.
 - **Multi-session aware** — many parallel sessions each get their own light, with a priority-based summary (`error` > `waiting` > `working` > `idle` > `offline`).
@@ -56,7 +56,7 @@ Keep your AI coding agents running in your terminal or editor and stop switching
 
 | | Light | State | Traffic-light cue | Meaning |
 | :---: | --- | --- | --- | --- |
-| ⚪ | Gray | `offline` | No active session | No tracked Claude Code / Codex / OpenCode session exists, or the sessions have exited. |
+| ⚪ | Gray | `offline` | No active session | No tracked Claude Code / Codex / OpenCode / pi session exists, or the sessions have exited. |
 | 🟢 | Pulsing green | `working` | Green means the agent is running | The agent is actively running a task and does not need user input. |
 | 🟡 | Solid yellow, then slow pulsing yellow after 30s without a response | `waiting` | Yellow means user attention is needed | The agent needs user confirmation, authorization, selection, or input. |
 | 🟢 | Solid green | `idle` | Green means ready | A session exists and is ready for the next prompt. |
@@ -140,7 +140,7 @@ Open Preferences from the right-click menu (**Preferences…**, or ⌘,). It is 
 | --- | --- |
 | General | "Launch at login" toggle; status light style (round / pixel-art) with a live preview. The choice is saved in `UserDefaults` for future launches. |
 | Notifications | "Enable system notifications" toggle. |
-| Integration | Configuration status for each supported agent (Claude Code / Codex / OpenCode), with **Auto-configure Hook**, **Re-check**, and **Open config**. |
+| Integration | Configuration status for each supported agent (Claude Code / Codex / OpenCode / pi), with **Auto-configure Hook**, **Re-check**, and **Open config**. |
 | About | App icon, name, version, and a short description. |
 
 ## Using the CLI
@@ -251,15 +251,20 @@ Session updates are driven per agent:
   OpenCode has no CLI hooks, so it subscribes to session events
   (`session.created`, `session.status`, `session.idle`, `session.error`,
   `session.deleted`, `permission.updated`) and calls the bundled `cc-lights` CLI.
-
+- **pi** — via an extension at `~/.pi/agent/extensions/cc-lights.ts`.
+  pi has no CLI hooks either, so the extension subscribes to pi lifecycle
+  events (`agent_start` → working, `agent_settled` → idle,
+  `session_shutdown` → remove, permission-style `tool_call` → waiting,
+  errored `tool_result` → error) and calls the bundled `cc-lights` CLI.
 Setup is automatic. On first launch the app:
 
 1. Installs its bundled `cc-lights` helper to a stable, PATH-independent
    location: `~/Library/Application Support/ClaudeCodeStatusLight/cc-lights`.
 2. Writes the Claude Code hooks into `~/.claude/settings.json` (backing the
    file up first), the Codex hooks into `~/.codex/hooks.json` (backing it up
-   first), and the OpenCode plugin into
-   `~/.config/opencode/plugins/cc-lights.js`.
+   first), the OpenCode plugin into
+   `~/.config/opencode/plugins/cc-lights.js`, and the pi extension into
+   `~/.pi/agent/extensions/cc-lights.ts`.
 3. Symlinks the helper into a writable `PATH` directory (such as
    `/opt/homebrew/bin` or `/usr/local/bin`) as both `cc-lights` and the
    legacy name `cc-statusctl`, so even a bare-command hook from any
@@ -295,6 +300,9 @@ cc-lights hook remove    # SessionEnd
 
 # OpenCode plugin passes sessionID / cwd explicitly
 cc-lights working --session "$OPENCODE_SESSION_ID" --cwd "$PWD"
+
+# pi extension passes the pi session ID / cwd / agent type
+cc-lights working --session "$PI_SESSION_ID" --cwd "$PWD"
 ```
 
 If you want to call the CLI yourself from a terminal or with `!` inside an agent session, symlink the managed helper onto your `PATH`, for example:
@@ -307,7 +315,7 @@ ln -sf "$HOME/Library/Application Support/ClaudeCodeStatusLight/cc-lights" /usr/
 
 ### What is CC Lights?
 
-CC Lights (Claude Code Status Light) is an open-source macOS menu bar app that turns each Claude Code / Codex / OpenCode session into a small colored status light, so you can tell at a glance whether your agent is working, waiting for input, idle, offline, or errored — without switching windows.
+CC Lights (Claude Code Status Light) is an open-source macOS menu bar app that turns each Claude Code / Codex / OpenCode / pi session into a small colored status light, so you can tell at a glance whether your agent is working, waiting for input, idle, offline, or errored — without switching windows.
 
 ### Which terminals does it support?
 
@@ -315,7 +323,7 @@ Clicking a light returns you to the right session in **Terminal.app, iTerm2, Gho
 
 ### Does it work with agent hooks?
 
-Yes. On first launch CC Lights installs its `cc-lights` CLI and writes the Claude Code hooks to `~/.claude/settings.json`, the Codex hooks to `~/.codex/hooks.json`, and the OpenCode plugin to `~/.config/opencode/plugins/cc-lights.js` (each backed up first). The hooks / plugin call `cc-lights` on each lifecycle event, so the lights update in real time. Restart the agent once after the initial setup.
+Yes. On first launch CC Lights installs its `cc-lights` CLI and writes the Claude Code hooks to `~/.claude/settings.json`, the Codex hooks to `~/.codex/hooks.json`, the OpenCode plugin to `~/.config/opencode/plugins/cc-lights.js`, and the pi extension to `~/.pi/agent/extensions/cc-lights.ts` (each backed up first). The hooks / plugin / extension call `cc-lights` on each lifecycle event, so the lights update in real time. Restart the agent once after the initial setup.
 
 ### Does CC Lights show a Dock icon?
 
