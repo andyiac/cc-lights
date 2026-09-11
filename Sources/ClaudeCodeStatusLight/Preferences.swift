@@ -638,7 +638,7 @@ final class IntegrationPreferencesViewController: PreferencePane {
                 row.icon.contentTintColor = configured ? .systemGreen : .systemOrange
                 row.label.stringValue = configured
                     ? String(format: Loc.integrationConfiguredStatusFormat, self.toolConfigs[index].name)
-                    : Loc.integrationNotConfiguredStatusFormat
+                    : String(format: Loc.integrationNotConfiguredStatusFormat, self.toolConfigs[index].name)
                 row.button.isEnabled = !configured
             }
         }
