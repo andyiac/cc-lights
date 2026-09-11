@@ -2160,6 +2160,11 @@ final class IntegrationsConfigMonitor {
 final class NotificationController {
     private let enabledKey = "notificationsEnabled"
 
+    /// UN 是否可用。ad-hoc 签名的 App 被系统拒发通知（macOS 26 实测）：
+    /// requestAuthorization 返回 granted=false 后，add() 仍"成功"但横幅永不显示，
+    /// 因此必须在授权结果处记住不可用，之后一律走 osascript 兜底。
+    private var systemNotificationsAvailable = true
+
     var isEnabled: Bool {
         get {
             if UserDefaults.standard.object(forKey: enabledKey) == nil {
@@ -2177,7 +2182,15 @@ final class NotificationController {
             return
         }
 
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
+            if let error {
+                FileHandle.standardError.write("cc-lights: 通知权限请求失败: \(error.localizedDescription)\n".data(using: .utf8)!)
+            }
+            let available = granted && error == nil
+            DispatchQueue.main.async {
+                self?.systemNotificationsAvailable = available
+            }
+        }
     }
 
     func notifyIfNeeded(from previousState: StatusState, to payload: StatusPayload) {
@@ -2196,6 +2209,11 @@ final class NotificationController {
     }
 
     private func send(title: String, body: String) {
+        // UN 不可用（未授权/ad-hoc 被拒）时直接走 osascript，不产生永远到达不了的请求。
+        guard systemNotificationsAvailable else {
+            Self.sendViaAppleScript(title: title, body: body)
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -2207,7 +2225,33 @@ final class NotificationController {
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                FileHandle.standardError.write("cc-lights: UN 通知被拒（\(error.localizedDescription)），回退 osascript\n".data(using: .utf8)!)
+                Self.sendViaAppleScript(title: content.title, body: content.body)
+            } else {
+                FileHandle.standardError.write("cc-lights: 通知已投递: \(content.title)\n".data(using: .utf8)!)
+            }
+        }
+    }
+
+    /// UNUserNotificationCenter 在 ad-hoc 签名下被系统拒发（macOS 26 实测，
+    /// terminal-notifier 同样被拒）。osascript 无需签名即可弹横幅，
+    /// 代价是署名/点击跳转为脚本编辑器——作为注意力提醒仍成立。
+    private static func sendViaAppleScript(title: String, body: String) {
+        func esc(_ s: String) -> String {
+            s.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+        }
+        let script = "display notification \"\(esc(body))\" with title \"\(esc(title))\" sound name \"Glass\""
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
     }
 
     private var isRunningFromAppBundle: Bool {

@@ -194,16 +194,16 @@ enum Loc {
         )
     }
     static var noSessionToOpenBody: String {
-        tr("There's no Claude Code session to open right now.", zh: "当前没有可打开的 Claude Code session。")
+        tr("There's no agent session to open right now.", zh: "当前没有可打开的会话。")
     }
 
     // 通知
-    static var notifyWaitingTitle: String { tr("Claude Code needs your decision", zh: "Claude Code 需要你的决定") }
+    static var notifyWaitingTitle: String { tr("Agent needs your decision", zh: "Agent 需要你的决定") }
     static var notifyWaitingBody: String {
-        tr("Return to the Claude Code context to make a choice.", zh: "请回到 Claude Code 上下文完成选择。")
+        tr("Return to the agent session to make a choice.", zh: "请回到对应会话完成选择。")
     }
-    static var notifyErrorTitle: String { tr("Claude Code hit an error", zh: "Claude Code 执行出错") }
-    static var notifyErrorBody: String { tr("Check the Claude Code logs.", zh: "请查看 Claude Code 日志。") }
+    static var notifyErrorTitle: String { tr("Agent hit an error", zh: "Agent 执行出错") }
+    static var notifyErrorBody: String { tr("Check the agent session logs.", zh: "请查看对应会话的日志。") }
 
     // Claude Code 集成检查
     static var autoConfiguredTitle: String {
@@ -317,8 +317,8 @@ enum Loc {
     static var enableNotificationsCheckbox: String { tr("Enable system notifications", zh: "启用系统通知") }
     static var notificationsHelp: String {
         tr(
-            "Send a system notification when a Claude Code session starts \"waiting\" (needs your approval/confirmation) or hits an error. Available only when running as a .app.",
-            zh: "当某个 Claude Code session 进入「等待决策」（需要你授权/确认）或「执行出错」时，发送一条系统通知提醒你。仅在以 .app 形式运行时可用。"
+            "Send a system notification when an agent session starts \"waiting\" (needs your approval/confirmation) or hits an error. Available only when running as a .app.",
+            zh: "当某个会话进入「等待决策」（需要你授权/确认）或「执行出错」时，发送一条系统通知提醒你。仅在以 .app 形式运行时可用。"
         )
     }
 
