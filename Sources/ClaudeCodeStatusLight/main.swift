@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OpenCodeConfigChecker.setUpOnLaunch()
         // pi 无 CLI hooks，改用 TypeScript 扩展订阅事件，自动写入 ~/.pi/agent/extensions/。
         PiConfigChecker.setUpOnLaunch()
+        // Hermes 有原生插件系统，自动写入 ~/.hermes/plugins/cc-lights/ 并尝试用 CLI 启用。
+        HermesConfigChecker.setUpOnLaunch()
         let monitor = StatusFileMonitor { [weak controller] payloads in
             controller?.apply(payloads)
         }
@@ -524,7 +526,7 @@ final class StatusBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let openItem = NSMenuItem(title: Loc.openClaudeCodeContext, action: #selector(openClaudeCodeContext), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: Loc.openAgentContext, action: #selector(openAgentContext), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
 
@@ -756,7 +758,7 @@ final class StatusBarController: NSObject {
         }
     }
 
-    @objc private func openClaudeCodeContext() {
+    @objc private func openAgentContext() {
         focusClaudeCodeContext(for: currentSessions.sorted(by: sessionSort).first)
     }
 
@@ -2085,7 +2087,9 @@ final class IntegrationsConfigMonitor {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/opencode/plugins"),
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".pi/agent/extensions")
+            .appendingPathComponent(".pi/agent/extensions"),
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".hermes/plugins/cc-lights")
     ]
 
     init(onChange: @escaping () -> Void) {
@@ -3322,6 +3326,518 @@ enum PiConfigChecker {
           });
         }
         """
+    }
+}
+
+// MARK: - Hermes Agent 集成
+
+/// 管理 Hermes Agent 的状态灯插件。Hermes 有原生插件系统：把插件目录放进
+/// `~/.hermes/plugins/cc-lights/`（plugin.yaml + __init__.py，`register(ctx)` 注册
+/// 生命周期 hook），再用 `hermes plugins enable cc-lights` 启用（Hermes 插件为 opt-in，
+/// 启用动作写入其 config.yaml 的 plugins.enabled）。插件在 Hermes 进程内运行，
+/// 直接调用托管 CLI 同步状态；TTY/终端识别由 CLI 沿进程树完成。
+enum HermesConfigChecker {
+    private static let hermesDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".hermes", isDirectory: true)
+    private static let pluginDirectory = hermesDirectory
+        .appendingPathComponent("plugins/cc-lights", isDirectory: true)
+
+    /// 供偏好设置「集成」分页打开/定位插件目录使用。
+    static var pluginDirectoryURL: URL { pluginDirectory }
+
+    private static var pluginManifestURL: URL {
+        pluginDirectory.appendingPathComponent("plugin.yaml", isDirectory: false)
+    }
+    private static var pluginInitURL: URL {
+        pluginDirectory.appendingPathComponent("__init__.py", isDirectory: false)
+    }
+
+    private static let hasAutoConfiguredKey = "hasAutoConfiguredHermesPlugin"
+
+    /// 启动时幂等配置 Hermes 插件：已配置则刷新文件（CLI 路径可能变化），
+    /// 未配置且首次运行则自动写入并尝试启用。
+    static func setUpOnLaunch() {
+        guard hermesSeemsInstalled() else {
+            return
+        }
+        _ = ClaudeCodeConfigChecker.installManagedCLI()
+
+        let firstRun = !UserDefaults.standard.bool(forKey: hasAutoConfiguredKey)
+        UserDefaults.standard.set(true, forKey: hasAutoConfiguredKey)
+
+        if isConfigured() {
+            _ = try? installPlugin()
+            return
+        }
+
+        guard firstRun else { return }
+
+        if (try? installPlugin()) == true {
+            notifyAutoConfigured()
+        }
+    }
+
+    /// Hermes 是否可能已安装：~/.hermes 目录存在，或常见路径上有 hermes 可执行文件。
+    static func hermesSeemsInstalled() -> Bool {
+        if FileManager.default.fileExists(atPath: hermesDirectory.path) {
+            return true
+        }
+        return hermesExecutableURL() != nil
+    }
+
+    /// hermes CLI 候选路径（GUI 进程的 PATH 不可靠，逐一探测常见安装位置）。
+    private static func hermesExecutableURL() -> URL? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent(".local/bin/hermes", isDirectory: false),
+            home.appendingPathComponent(".hermes/bin/hermes", isDirectory: false),
+            URL(fileURLWithPath: "/usr/local/bin/hermes"),
+            URL(fileURLWithPath: "/opt/homebrew/bin/hermes")
+        ]
+        let fileManager = FileManager.default
+        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+
+    private static func notifyAutoConfigured() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = Loc.hermesAutoConfiguredTitle
+            alert.informativeText = Loc.hermesAutoConfiguredBody
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        }
+    }
+
+    /// 用户从菜单手动检查（每次都弹结果）。
+    static func check() {
+        let configured = isConfigured()
+        let alert = NSAlert()
+        alert.alertStyle = configured ? .informational : .warning
+        alert.messageText = configured ? Loc.hermesConfiguredTitle : Loc.hermesNotConfiguredTitle
+        alert.informativeText = configured ? Loc.hermesConfiguredBody : Loc.hermesNotConfiguredBody
+        if !configured {
+            alert.addButton(withTitle: Loc.autoConfigureButton)
+        }
+        alert.addButton(withTitle: Loc.buttonOK)
+        if !configured, alert.runModal() == .alertFirstButtonReturn {
+            installPluginWithUI()
+        }
+    }
+
+    /// 已配置 = 插件两个文件都在且 __init__.py 指向当前托管 CLI 路径（路径变了需刷新）。
+    static func isConfigured() -> Bool {
+        guard FileManager.default.fileExists(atPath: pluginManifestURL.path),
+              let current = try? String(contentsOf: pluginInitURL, encoding: .utf8) else {
+            return false
+        }
+        return current.contains(managedCLIPath())
+    }
+
+    /// 插件已被 Hermes 启用（plugins.enabled 含 cc-lights）。纯文本启发式检查，
+    /// 容错 YAML 块/流两种写法；读不出来时不影响主流程，仅影响状态展示。
+    static func isPluginEnabled() -> Bool {
+        let configURL = hermesDirectory.appendingPathComponent("config.yaml", isDirectory: false)
+        guard let text = try? String(contentsOf: configURL, encoding: .utf8) else {
+            return false
+        }
+        // 流式：enabled: [cc-lights, ...]
+        if text.range(of: #"enabled:\s*\[[^\]]*cc-lights"#, options: .regularExpression) != nil {
+            return true
+        }
+        // 块式：plugins:\n  enabled:\n    - cc-lights
+        if text.range(of: #"(?m)^\s+-\s*[\"']?cc-lights[\"']?\s*$"#, options: .regularExpression) != nil {
+            return true
+        }
+        return false
+    }
+
+    enum InstallError: LocalizedError {
+        case writeFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .writeFailed(let reason):
+                return reason
+            }
+        }
+    }
+
+    /// 生成并幂等写入 Hermes 插件文件，然后尝试用 hermes CLI 启用。
+    /// 返回是否真正写入了改动。
+    @discardableResult
+    static func installPlugin() throws -> Bool {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: pluginDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let initContent = pluginInitSource(cliPath: managedCLIPath())
+        let manifestContent = pluginManifestSource()
+
+        var changed = false
+        let existingInit = try? String(contentsOf: pluginInitURL, encoding: .utf8)
+        if existingInit != initContent {
+            try initContent.write(to: pluginInitURL, atomically: true, encoding: .utf8)
+            changed = true
+        }
+        let existingManifest = try? String(contentsOf: pluginManifestURL, encoding: .utf8)
+        if existingManifest != manifestContent {
+            try manifestContent.write(to: pluginManifestURL, atomically: true, encoding: .utf8)
+            changed = true
+        }
+
+        // 文件就位后尽力启用；CLI 不可用时不视为失败（用户可手动 hermes plugins enable）。
+        if !isPluginEnabled() {
+            enablePluginViaCLI()
+        }
+        return changed
+    }
+
+    /// 用 hermes CLI 启用插件（幂等）。GUI 进程 PATH 稀疏，走候选路径探测。
+    /// 后台线程执行：hermes CLI 是 Python 启动，同步等待会卡住 App 启动/主线程。
+    private static func enablePluginViaCLI() {
+        DispatchQueue.global(qos: .utility).async {
+            guard let hermes = hermesExecutableURL() else {
+                return
+            }
+            let process = Process()
+            process.executableURL = hermes
+            process.arguments = ["plugins", "enable", "cc-lights"]
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try? process.run()
+        }
+    }
+
+    /// 插件内 subprocess 需要的裸路径（不带 shell 引号，argv 数组不经过 shell）。
+    private static func managedCLIPath() -> String {
+        if let url = ClaudeCodeConfigChecker.existingManagedCLIURL() {
+            return url.path
+        }
+        return ClaudeCodeConfigChecker.managedCLIURL.path
+    }
+
+    static func installPluginWithUI() {
+        do {
+            let didChange = try installPlugin()
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            if isPluginEnabled() {
+                alert.messageText = didChange ? Loc.hermesPluginWrittenTitle : Loc.hermesConfiguredTitle
+                alert.informativeText = didChange ? Loc.hermesPluginWrittenBody : Loc.hooksNoChangeBody
+            } else {
+                // 文件已写入但 CLI 启用失败：引导用户手动执行一条命令。
+                alert.messageText = didChange ? Loc.hermesPluginWrittenTitle : Loc.hermesNotConfiguredTitle
+                alert.informativeText = Loc.hermesEnableManualBody
+            }
+            alert.addButton(withTitle: Loc.buttonOK)
+            alert.runModal()
+        } catch {
+            NSAlert.showError(title: Loc.writeConfigFailedTitle, message: error.localizedDescription)
+        }
+    }
+
+    /// plugin.yaml 清单内容。hooks 列表必须与 __init__.py 中 register() 的一致。
+    static func pluginManifestSource() -> String {
+        """
+        name: cc-lights
+        version: 0.1.0
+        description: "CC Lights menu-bar status light: reports Hermes session state (working / waiting / idle / error / offline) to the CC Lights macOS app via its bundled CLI."
+        author: "Bernard + Oregano"
+        homepage: "https://github.com/andyiac/cc-lights"
+        hooks:
+          - subagent_start
+          - subagent_stop
+          - on_session_start
+          - pre_llm_call
+          - post_llm_call
+          - pre_tool_call
+          - post_tool_call
+          - pre_approval_request
+          - post_approval_response
+          - api_request_error
+          - on_session_end
+          - on_session_finalize
+        """
+    }
+
+    /// 生成 Hermes 插件源码。插件通过 register(ctx) 订阅生命周期 hook，
+    /// 按事件映射到 cc-lights 状态。托管 CLI 路径在安装时内嵌为第一候选。
+    ///
+    /// 两个 Hermes 语义坑（均已在此处理）：
+    /// - on_session_end 按轮触发（turn_finalizer.py），真正的会话边界是 on_session_finalize；
+    /// - api_request_error 在自动恢复（重试/换 key）之前触发，retryable=True 的不应亮红灯。
+    static func pluginInitSource(cliPath: String) -> String {
+        ##"""
+        """cc-lights plugin — report Hermes session state to the CC Lights macOS menu-bar app.
+
+        Design notes (validated against andyiac/cc-lights v0.1.9 + Hermes source):
+
+        - State is written by invoking the bundled ``cc-lights`` CLI as a child process.
+          The CLI resolves TTY / terminal bundle from the process tree and inherited env
+          (TERM_PROGRAM), so no extra wiring is needed for click-to-focus.
+        - ``on_session_end`` fires PER TURN in Hermes (agent/turn_finalizer.py), not at
+          process exit. The real session boundary is ``on_session_finalize``.
+        - ``api_request_error`` fires after error classification but BEFORE auto-recovery
+          (retry / credential rotation / fallback). Only non-retryable errors map to the
+          red light; transient failures self-correct on the next ``pre_llm_call``.
+        - ``clarify`` (agent asks the user a question) is surfaced via tool-call hooks,
+          matched on tool_name.
+
+        Subagent light merging (in-process aggregation):
+        - ``delegate_task`` children run IN the parent's process with their own session
+          ids, so without intervention every child spawns its own light. We aggregate:
+          every top-level session owns one light whose state is the priority-max
+          (error > waiting > working > idle) of its own state plus all live children's
+          states. ``subagent_start`` / ``subagent_stop`` (both carry
+          ``parent_session_id`` + ``child_session_id``) maintain the child set.
+        - Why aggregation instead of plain forwarding: with async delegation the
+          parent's own turn ENDS right after dispatch (post_llm_call → idle) while
+          children keep working — plain last-writer-wins would flip the light to idle
+          mid-delegation. The priority merge keeps the light honest until the last
+          child stops.
+        - Child lifecycle noise (idle / turnend / remove / finalize) never touches the
+          light directly; it only updates the child's slot in the aggregate.
+        - ``parent_session_id`` present directly on a hook payload (e.g.
+          ``pre_llm_call``) registers the child even if ``subagent_start`` was missed.
+        - Kanban workers / separately spawned ``hermes`` processes are real separate
+          processes with their own terminals — they keep their own lights.
+
+        All hooks are best-effort: cc-lights being absent or slow must never affect the
+        agent loop. invoke_hook() already isolates callback exceptions; we additionally
+        cap the subprocess at a few seconds.
+        """
+
+        from __future__ import annotations
+
+        import logging
+        import os
+        import shutil
+        import subprocess
+        import threading
+        from pathlib import Path
+        from typing import Any, Dict, Optional, Tuple
+
+        logger = logging.getLogger(__name__)
+
+        _CLI_CANDIDATES = [
+            # Stable copy installed by the CC Lights app on first launch.
+            Path(\##(String(reflecting: cliPath))),
+            # Fallback: the CLI bundled inside the .app.
+            Path("/Applications/CC Lights.app/Contents/Resources/cc-lights"),
+        ]
+
+        _SUBPROCESS_TIMEOUT_S = 5
+        _MESSAGE_MAX = 200
+
+        # Higher number = wins the aggregate. Mirrors the app's summary priority.
+        _STATE_PRIORITY = {"offline": 0, "idle": 1, "working": 2, "waiting": 3, "error": 4}
+
+        # Per top-level session: self state + child states. In-process only — children
+        # share this process, so a plain dict + lock is sufficient.
+        # {parent_sid: (state, message)} for the parent's own latest state
+        _SELF_STATE: Dict[str, Tuple[str, str]] = {}
+        # {parent_sid: {child_sid: (state, message)}}
+        _CHILD_STATE: Dict[str, Dict[str, Tuple[str, str]]] = {}
+        # child_sid -> parent_sid (lookup for events that only carry the child id)
+        _CHILD_TO_PARENT: Dict[str, str] = {}
+        _MAP_LOCK = threading.Lock()
+        _MAP_MAX = 512  # defensive bound; entries are tiny and removed on subagent_stop
+
+
+        def _cli_path() -> Optional[str]:
+            override = os.environ.get("CC_LIGHTS_CLI", "").strip()
+            if override and os.access(override, os.X_OK):
+                return override
+            for candidate in _CLI_CANDIDATES:
+                if candidate.exists() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+            return shutil.which("cc-lights")
+
+
+        def _report(state: str, *, session_id: str = "", message: str = "") -> None:
+            """Invoke ``cc-lights <state>``. Never raises; missing CLI is a silent no-op."""
+            cli = _cli_path()
+            if not cli:
+                return
+            argv = [cli, state]
+            if session_id.strip():
+                argv += ["--session", session_id.strip()]
+            if message.strip():
+                argv += ["--message", message.strip()[:_MESSAGE_MAX]]
+            try:
+                subprocess.run(
+                    argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=_SUBPROCESS_TIMEOUT_S,
+                    check=False,
+                )
+            except Exception as exc:  # never propagate into the agent loop
+                logger.debug("cc-lights report failed (%s): %s", state, exc)
+
+
+        def _truncate(text: Any) -> str:
+            s = str(text or "").replace("\n", " ").strip()
+            return s[:_MESSAGE_MAX]
+
+
+        def _aggregate(parent_sid: str) -> Tuple[str, str]:
+            """Priority-max of self + live children. Caller holds _MAP_LOCK."""
+            best_state, best_message = _SELF_STATE.get(parent_sid, ("idle", ""))
+            for child_state, child_message in _CHILD_STATE.get(parent_sid, {}).values():
+                if _STATE_PRIORITY.get(child_state, 0) > _STATE_PRIORITY.get(best_state, 0):
+                    best_state, best_message = child_state, child_message
+            return best_state, best_message
+
+
+        def _register_child(parent_sid: str, child_sid: str) -> None:
+            if not parent_sid or not child_sid or parent_sid == child_sid:
+                return
+            with _MAP_LOCK:
+                if len(_CHILD_TO_PARENT) >= _MAP_MAX:
+                    return
+                old_parent = _CHILD_TO_PARENT.get(child_sid)
+                if old_parent and old_parent != parent_sid:
+                    # Re-parenting: clear the stale slot under the old parent.
+                    _CHILD_STATE.get(old_parent, {}).pop(child_sid, None)
+                _CHILD_TO_PARENT[child_sid] = parent_sid
+                _CHILD_STATE.setdefault(parent_sid, {})
+
+
+        def _emit(state: str, *, session_id: str, parent_session_id: str = "", message: str = "") -> None:
+            """Route one event into the aggregate and re-emit the parent's light."""
+            sid = (session_id or "").strip()
+            parent = (parent_session_id or "").strip()
+            if parent and sid and parent != sid:
+                _register_child(parent, sid)
+            if not parent and sid:
+                with _MAP_LOCK:
+                    parent = _CHILD_TO_PARENT.get(sid, "")
+            logger.debug("cc-lights route: state=%s session=%s parent=%s", state, sid, parent or "-")
+
+            if parent and sid != parent:
+                # Child event: update the child slot, re-emit the aggregate. The remove
+                # state is meaningless for a slot (child lifecycle is not the light's).
+                with _MAP_LOCK:
+                    if state != "remove":
+                        _CHILD_STATE.setdefault(parent, {})[sid] = (state, message)
+                    agg_state, agg_message = _aggregate(parent)
+                _report(agg_state, session_id=parent, message=agg_message)
+                return
+
+            # Top-level event.
+            if state == "remove":
+                with _MAP_LOCK:
+                    _SELF_STATE.pop(sid, None)
+                    for child in list(_CHILD_STATE.pop(sid, {})):
+                        _CHILD_TO_PARENT.pop(child, None)
+                _report("remove", session_id=sid)
+                return
+            with _MAP_LOCK:
+                if len(_SELF_STATE) < _MAP_MAX or sid in _SELF_STATE:
+                    _SELF_STATE[sid] = (state, message)
+                agg_state, agg_message = _aggregate(sid)
+            _report(agg_state, session_id=sid, message=agg_message)
+
+
+        # --- Hook handlers ---------------------------------------------------------
+
+
+        def _on_subagent_start(parent_session_id: str = "", child_session_id: Any = None, **_: Any) -> None:
+            logger.debug("cc-lights subagent_start: parent=%s child=%s", parent_session_id, child_session_id)
+            _register_child((parent_session_id or "").strip(), str(child_session_id or "").strip())
+
+
+        def _on_subagent_stop(parent_session_id: str = "", child_session_id: Any = None, **_: Any) -> None:
+            child = str(child_session_id or "").strip()
+            if not child:
+                return
+            with _MAP_LOCK:
+                parent = _CHILD_TO_PARENT.pop(child, "")
+                if parent:
+                    _CHILD_STATE.get(parent, {}).pop(child, None)
+                    agg_state, agg_message = _aggregate(parent)
+            if parent:
+                # Last child gone -> the light falls back to the parent's own state.
+                _report(agg_state, session_id=parent, message=agg_message)
+
+
+        def _on_session_start(session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            _emit("idle", session_id=session_id, parent_session_id=parent_session_id)
+
+
+        def _on_pre_llm_call(session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            _emit("working", session_id=session_id, parent_session_id=parent_session_id)
+
+
+        def _on_post_llm_call(session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            _emit("idle", session_id=session_id, parent_session_id=parent_session_id)
+
+
+        def _on_pre_tool_call(tool_name: str = "", session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            if tool_name == "clarify":
+                _emit("waiting", session_id=session_id, parent_session_id=parent_session_id,
+                      message="Agent is asking a question")
+
+
+        def _on_post_tool_call(tool_name: str = "", session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            if tool_name == "clarify":
+                _emit("working", session_id=session_id, parent_session_id=parent_session_id)
+
+
+        def _on_pre_approval_request(session_id: str = "", parent_session_id: str = "",
+                                     command: str = "", description: str = "", **_: Any) -> None:
+            _emit("waiting", session_id=session_id, parent_session_id=parent_session_id,
+                  message=_truncate(description or command))
+
+
+        def _on_post_approval_response(session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            _emit("working", session_id=session_id, parent_session_id=parent_session_id)
+
+
+        def _on_api_request_error(session_id: str = "", parent_session_id: str = "",
+                                  retryable: Any = True, error_message: str = "", **_: Any) -> None:
+            # Fires before auto-recovery; only surface errors that will actually stop the turn.
+            # Hook kwargs arrive as native Python objects (in-process dispatch); be tolerant anyway.
+            if bool(retryable):
+                return
+            _emit("error", session_id=session_id, parent_session_id=parent_session_id,
+                  message=_truncate(error_message))
+
+
+        def _on_session_end(session_id: str = "", parent_session_id: str = "",
+                            completed: bool = True, failed: bool = False, **_: Any) -> None:
+            # Per-turn boundary: failed turn -> red, otherwise back to idle.
+            _emit("error" if failed else "idle", session_id=session_id,
+                  parent_session_id=parent_session_id)
+
+
+        def _on_session_finalize(session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            # Child finalize: only clears the child slot (remove never propagates).
+            # Top-level finalize: clears the whole aggregate and removes the light.
+            _emit("remove", session_id=session_id, parent_session_id=parent_session_id)
+
+
+        def register(ctx) -> None:
+            ctx.register_hook("subagent_start", _on_subagent_start)
+            ctx.register_hook("subagent_stop", _on_subagent_stop)
+            ctx.register_hook("on_session_start", _on_session_start)
+            ctx.register_hook("pre_llm_call", _on_pre_llm_call)
+            ctx.register_hook("post_llm_call", _on_post_llm_call)
+            ctx.register_hook("pre_tool_call", _on_pre_tool_call)
+            ctx.register_hook("post_tool_call", _on_post_tool_call)
+            ctx.register_hook("pre_approval_request", _on_pre_approval_request)
+            ctx.register_hook("post_approval_response", _on_post_approval_response)
+            ctx.register_hook("api_request_error", _on_api_request_error)
+            ctx.register_hook("on_session_end", _on_session_end)
+            ctx.register_hook("on_session_finalize", _on_session_finalize)
+
+        """##
     }
 }
 

@@ -492,7 +492,7 @@ final class NotificationsPreferencesViewController: PreferencePane {
 
 // MARK: - 集成
 
-/// 「集成」分页：展示四个 AI 编码工具（Claude Code / Codex / OpenCode / pi）各自的状态灯
+/// 「集成」分页：展示五个 AI 编码工具（Claude Code / Codex / OpenCode / pi / Hermes）各自的状态灯
 /// 接入配置状态，并提供「自动配置 / 重新检查 / 打开配置文件」操作。
 final class IntegrationPreferencesViewController: PreferencePane {
     /// 一个工具的配置状态与操作，抽象自三个 ConfigChecker 的公共形状。
@@ -567,8 +567,19 @@ final class IntegrationPreferencesViewController: PreferencePane {
                 self?.openFile(url)
             }
         )
+        let hermes = ToolConfig(
+            name: "Hermes",
+            help: Loc.integrationHermesHelp,
+            isConfigured: { HermesConfigChecker.isConfigured() && HermesConfigChecker.isPluginEnabled() },
+            recheck: { HermesConfigChecker.check() },
+            install: { HermesConfigChecker.installPluginWithUI() },
+            openFile: { [weak self] in
+                let url = HermesConfigChecker.pluginDirectoryURL
+                self?.openFile(url)
+            }
+        )
 
-        toolConfigs = [claude, codex, opencode, pi]
+        toolConfigs = [claude, codex, opencode, pi, hermes]
         for (index, config) in toolConfigs.enumerated() {
             addSectionHeader(config.name)
             stack.addArrangedSubview(makeSection(for: index))
