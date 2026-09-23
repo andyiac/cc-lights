@@ -99,9 +99,9 @@ enum Loc {
     static var lightStylePixelBlockRing: String { tr("Hollow Circle", zh: "空心圆") }
 
     // 状态栏菜单
-    static var noSession: String { tr("No Claude Code session", zh: "无 Claude Code session") }
+    static var noSession: String { tr("No agent session", zh: "无 agent 会话") }
     static var tooltipNoSession: String {
-        tr("No Claude Code session\nRight-click for options", zh: "无 Claude Code session\n右键打开设置")
+        tr("No agent session\nRight-click for options", zh: "无 agent 会话\n右键打开设置")
     }
     static func sessionsCount(_ count: Int) -> String {
         tr("Sessions: \(count)", zh: "Sessions：\(count)")
@@ -111,7 +111,7 @@ enum Loc {
     static var clearAllErrors: String { tr("Clear all errors", zh: "清除所有错误") }
     static var clearAllLights: String { tr("Clear all lights", zh: "清空所有灯") }
     static var preferences: String { tr("Preferences…", zh: "偏好设置…") }
-    static var openClaudeCodeContext: String { tr("Open Claude Code context", zh: "打开 Claude Code 上下文") }
+    static var openAgentContext: String { tr("Open agent context", zh: "打开会话上下文") }
     static var quitCCLights: String { tr("Quit CC Lights…", zh: "退出 CC Lights...") }
 
     // 悬停/详情行
@@ -166,12 +166,12 @@ enum Loc {
     // 退出确认
     static var quitConfirmTitle: String { tr("Quit CC Lights?", zh: "退出 CC Lights？") }
     static var quitConfirmBody: String {
-        tr("The menu bar lights will stop showing Claude Code status.", zh: "状态栏指示灯将停止显示 Claude Code 状态。")
+        tr("The menu bar lights will stop showing agent status.", zh: "状态栏指示灯将停止显示 agent 状态。")
     }
 
     // 打开上下文失败
     static var cannotOpenSessionTitle: String {
-        tr("Couldn't open the Claude Code session", zh: "无法打开 Claude Code session")
+        tr("Couldn't open the agent session", zh: "无法打开该会话")
     }
     static func cannotOpenSessionBody(command: String) -> String {
         tr(
@@ -194,16 +194,16 @@ enum Loc {
         )
     }
     static var noSessionToOpenBody: String {
-        tr("There's no Claude Code session to open right now.", zh: "当前没有可打开的 Claude Code session。")
+        tr("There's no agent session to open right now.", zh: "当前没有可打开的会话。")
     }
 
     // 通知
-    static var notifyWaitingTitle: String { tr("Claude Code needs your decision", zh: "Claude Code 需要你的决定") }
+    static var notifyWaitingTitle: String { tr("Agent needs your decision", zh: "Agent 需要你的决定") }
     static var notifyWaitingBody: String {
-        tr("Return to the Claude Code context to make a choice.", zh: "请回到 Claude Code 上下文完成选择。")
+        tr("Return to the agent session to make a choice.", zh: "请回到对应会话完成选择。")
     }
-    static var notifyErrorTitle: String { tr("Claude Code hit an error", zh: "Claude Code 执行出错") }
-    static var notifyErrorBody: String { tr("Check the Claude Code logs.", zh: "请查看 Claude Code 日志。") }
+    static var notifyErrorTitle: String { tr("Agent hit an error", zh: "Agent 执行出错") }
+    static var notifyErrorBody: String { tr("Check the agent session logs.", zh: "请查看对应会话的日志。") }
 
     // Claude Code 集成检查
     static var autoConfiguredTitle: String {
@@ -317,8 +317,8 @@ enum Loc {
     static var enableNotificationsCheckbox: String { tr("Enable system notifications", zh: "启用系统通知") }
     static var notificationsHelp: String {
         tr(
-            "Send a system notification when a Claude Code session starts \"waiting\" (needs your approval/confirmation) or hits an error. Available only when running as a .app.",
-            zh: "当某个 Claude Code session 进入「等待决策」（需要你授权/确认）或「执行出错」时，发送一条系统通知提醒你。仅在以 .app 形式运行时可用。"
+            "Send a system notification when an agent session starts \"waiting\" (needs your approval/confirmation) or hits an error. Available only when running as a .app.",
+            zh: "当某个会话进入「等待决策」（需要你授权/确认）或「执行出错」时，发送一条系统通知提醒你。仅在以 .app 形式运行时可用。"
         )
     }
 
@@ -326,8 +326,8 @@ enum Loc {
     static var integrationHeader: String { tr("Tool integrations", zh: "工具集成") }
     static var integrationHelp: String {
         tr(
-            "Configure status-light hooks for Claude Code, Codex, and OpenCode. Each tool is configured automatically on first launch.",
-            zh: "为 Claude Code、Codex、OpenCode 配置状态灯接入。每个工具都会在首次启动时自动配置。"
+            "Configure status light integration for Claude Code, Codex, OpenCode, pi, and Hermes. Each tool is auto-configured on first launch.",
+            zh: "为 Claude Code、Codex、OpenCode、pi、Hermes 配置状态灯接入。每个工具都会在首次启动时自动配置。"
         )
     }
     static var integrationAutoConfigureButton: String { tr("Auto-configure Hook", zh: "自动配置 Hook") }
@@ -396,6 +396,52 @@ enum Loc {
         tr(
             "Lights via the extension at ~/.pi/agent/extensions/cc-lights.ts.",
             zh: "通过 ~/.pi/agent/extensions/cc-lights.ts 扩展驱动。"
+        )
+    }
+
+    // Hermes Agent 集成
+    static var hermesAutoConfiguredTitle: String {
+        tr("Hermes integration configured automatically", zh: "已自动配置 Hermes 集成")
+    }
+    static var hermesAutoConfiguredBody: String {
+        tr(
+            "The status-light plugin was written to ~/.hermes/plugins/cc-lights/.\n\nStart a new Hermes session for the change to take effect.",
+            zh: "已把状态灯插件写入 ~/.hermes/plugins/cc-lights/。\n\n请新开 Hermes 会话使配置生效。"
+        )
+    }
+    static var hermesConfiguredTitle: String { tr("✅ Hermes plugin installed", zh: "✅ Hermes 插件已安装") }
+    static var hermesNotConfiguredTitle: String {
+        tr("⚠️ No Hermes plugin detected", zh: "⚠️ 未检测到 Hermes 插件")
+    }
+    static var hermesConfiguredBody: String {
+        tr(
+            "The lights will follow Hermes session status automatically.\n\nTo adjust, edit ~/.hermes/plugins/cc-lights/__init__.py.",
+            zh: "状态灯将自动跟随 Hermes 会话的状态变化。\n\n如需调整，请编辑 ~/.hermes/plugins/cc-lights/__init__.py。"
+        )
+    }
+    static var hermesNotConfiguredBody: String {
+        tr(
+            "The lights need the Hermes plugin to change color automatically.\n\nClick \"Auto-configure for me\" and the app will write ~/.hermes/plugins/cc-lights/ and run `hermes plugins enable cc-lights`.",
+            zh: "状态灯需要 Hermes 插件才能自动变化颜色。\n\n点击「为我自动配置」后，App 会写入 ~/.hermes/plugins/cc-lights/ 并执行 `hermes plugins enable cc-lights`。"
+        )
+    }
+    static var hermesPluginWrittenTitle: String { tr("✅ Hermes plugin written", zh: "✅ 已写入 Hermes 插件") }
+    static var hermesPluginWrittenBody: String {
+        tr(
+            "The status-light plugin was written to ~/.hermes/plugins/cc-lights/ and enabled.\n\nStart a new Hermes session for the change to take effect.",
+            zh: "已把状态灯插件写入 ~/.hermes/plugins/cc-lights/ 并启用。\n\n请新开 Hermes 会话使配置生效。"
+        )
+    }
+    static var hermesEnableManualBody: String {
+        tr(
+            "The plugin files were written to ~/.hermes/plugins/cc-lights/, but the hermes CLI was not found, so the plugin could not be enabled automatically.\n\nPlease run manually: hermes plugins enable cc-lights",
+            zh: "插件文件已写入 ~/.hermes/plugins/cc-lights/，但未找到 hermes CLI，无法自动启用。\n\n请手动执行：hermes plugins enable cc-lights"
+        )
+    }
+    static var integrationHermesHelp: String {
+        tr(
+            "Lights via the plugin at ~/.hermes/plugins/cc-lights/.",
+            zh: "通过 ~/.hermes/plugins/cc-lights/ 插件驱动。"
         )
     }
 
@@ -501,8 +547,8 @@ enum Loc {
     // 关于分页
     static var aboutDescription: String {
         tr(
-            "Shows each Claude Code session's status in the menu bar with traffic lights: green for idle/working, yellow when waiting for a decision, red on error. Click a light to jump back to its terminal.",
-            zh: "在菜单栏用交通灯的方式展示每个 Claude Code session 的状态：绿色空闲/工作、黄色等待决策、红色出错。点击指示灯可直接切回对应终端。"
+            "Shows each agent session's status in the menu bar with traffic lights: green for idle/working, yellow when waiting for a decision, red on error. Click a light to jump back to its terminal.",
+            zh: "在菜单栏用交通灯的方式展示每个 agent 会话的状态：绿色空闲/工作、黄色等待决策、红色出错。点击指示灯可直接切回对应终端。"
         )
     }
     static func aboutVersion(_ short: String) -> String { tr("Version \(short)", zh: "版本 \(short)") }

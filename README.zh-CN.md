@@ -2,7 +2,7 @@
 
 # CC Lights
 
-### 菜单栏上的 Claude Code / Codex / OpenCode / pi 红绿灯 — 瞄一眼就知道每场会话是在工作、等你、还是报错，点一下直接跳过去
+### 菜单栏上的 Claude Code / Codex / OpenCode / pi / Hermes 红绿灯 — 瞄一眼就知道每场会话是在工作、等你、还是报错，点一下直接跳过去
 
 <img src="Resources/AppIcon.png" width="120" alt="CC Lights —— macOS 上的 AI 编码状态灯" />
 
@@ -10,16 +10,16 @@
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)](https://swift.org)
 [![Menu bar app](https://img.shields.io/badge/type-menu%20bar%20app-brightgreen)](#功能概览)
 [![Made for Claude Code](https://img.shields.io/badge/made%20for-Claude%20Code-8A2BE2)](https://docs.anthropic.com/en/docs/claude-code)
-[![Also works with Codex, OpenCode & pi](https://img.shields.io/badge/also-Codex%20%26%20OpenCode%20%26%20pi-blue)](#多agent-集成)
+[![Also works with Codex, OpenCode, pi & Hermes](https://img.shields.io/badge/also-Codex%20%26%20OpenCode%20%26%20pi%20%26%20Hermes-blue)](#多agent-集成)
 [![Download .dmg](https://img.shields.io/badge/download-.dmg-blue?logo=apple&logoColor=white)](https://github.com/andyiac/cc-lights/releases/latest)
 
 [English](README.md) · **中文**
 
 </div>
 
-**CC Lights**（**Claude Code Status Light**）是一款轻量的 **macOS 状态栏 App**，把一个或多个 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**、**[Codex](https://developers.openai.com/codex/)**、**[OpenCode](https://opencode.ai)**、**[pi](https://pi.dev)** 会话的实时状态显示为状态栏上的**红绿灯**——工作/空闲为绿色，需要你操作时变黄，出错变红，无会话时为灰色。
+**CC Lights**（**Claude Code Status Light**）是一款轻量的 **macOS 状态栏 App**，把一个或多个 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**、**[Codex](https://developers.openai.com/codex/)**、**[OpenCode](https://opencode.ai)**、**[pi](https://pi.dev)**、**[Hermes Agent](https://github.com/NousResearch/hermes-agent)** 会话的实时状态显示为状态栏上的**红绿灯**——工作/空闲为绿色，需要你操作时变黄，出错变红，无会话时为灰色。
 
-让 AI 编码 agent 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、还是出错**。**点击某个灯，即可立刻切到那个正等你处理的会话**——精确跳转到对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 标签页 / 窗口 / 面板。状态由 **Claude Code / Codex hooks**、**OpenCode 插件**与 **pi 扩展**，通过内置的 `cc-lights` 命令行工具驱动更新。
+让 AI 编码 agent 在终端或编辑器里跑着，不必再频繁切回去查看：扫一眼状态栏就知道每个会话是在**工作中、等待决策、空闲、还是出错**。**点击某个灯，即可立刻切到那个正等你处理的会话**——精确跳转到对应的 **Terminal.app、iTerm2、Ghostty 或 cmux** 标签页 / 窗口 / 面板。状态由 **Claude Code / Codex hooks**、**OpenCode 插件**、**pi 扩展**与 **Hermes 插件**，通过内置的 `cc-lights` 命令行工具驱动更新。
 
 
 <p align="center">
@@ -42,11 +42,11 @@
 ## 功能概览
 
 - **一键切回目标会话** —— 点击任意灯，即可 focus 到它对应的 Terminal.app、iTerm2、Ghostty 或 cmux 标签页 / 窗口 / 面板；尤其适合第一时间处理正在等你输入的会话。
-- **每会话独立状态灯** —— 每个 agent session（Claude Code / Codex / OpenCode / pi）在状态栏各显示一个灯。
-- **支持多 agent** —— Claude Code（hooks）、Codex（hooks）、OpenCode（插件）、pi（扩展）都能驱动状态灯。
+- **每会话独立状态灯** —— 每个 agent session（Claude Code / Codex / OpenCode / pi / Hermes）在状态栏各显示一个灯。
+- **支持多 agent** —— Claude Code（hooks）、Codex（hooks）、OpenCode（插件）、pi（扩展）、Hermes（插件）都能驱动状态灯。
 - **交通灯语义** —— 用颜色和动画一眼看清状态：工作中绿色呼吸、等待你操作时黄色常亮、出错时红色闪烁、离线为灰色。
 - **原生系统通知** —— 会话需要决策或发生 API 错误时立即通知你。
-- **零配置集成** —— 首次启动自动安装 `cc-lights` 并写好 `~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.config/opencode/plugins/cc-lights.js` 插件与 `~/.pi/agent/extensions/cc-lights.ts` 扩展（均先备份）。
+- **零配置集成** —— 首次启动自动安装 `cc-lights` 并写好 `~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.config/opencode/plugins/cc-lights.js` 插件、`~/.pi/agent/extensions/cc-lights.ts` 扩展与 `~/.hermes/plugins/cc-lights/` 插件（均先备份）。
 - **偏好设置窗口** —— 参考 macOS 系统设置 / Shottr 风格，集中管理登录启动、灯样式、通知与集成。
 - **圆形灯或像素风格** —— 在偏好设置中切换，选择会持久保存。
 - **多会话感知** —— 多个并行会话各有一个灯，并按优先级汇总（`error` > `waiting` > `working` > `idle` > `offline`）。
@@ -57,7 +57,7 @@
 
 | | 灯色 | 状态值 | 红绿灯指示 | 含义 |
 | :---: | --- | --- | --- | --- |
-| ⚪ | 灰色 | `offline` | 无活跃会话 | 没有可跟踪的 Claude Code / Codex / OpenCode / pi session，或 session 已退出。 |
+| ⚪ | 灰色 | `offline` | 无活跃会话 | 没有可跟踪的 Claude Code / Codex / OpenCode / pi / Hermes session，或 session 已退出。 |
 | 🟢 | 绿色闪烁 | `working` | 绿灯表示正在运行 | agent 正在自动执行任务，不需要用户干预。 |
 | 🟡 | 黄色常亮，30 秒未响应后黄色慢呼吸 | `waiting` | 黄灯表示需要用户注意 | agent 需要用户授权、确认、选择或输入。 |
 | 🟢 | 绿色常亮 | `idle` | 绿灯表示可继续使用 | 有 agent session，且当前空闲或上次任务已正常完成。 |
@@ -146,7 +146,7 @@ make install
 | --- | --- |
 | 通用 | 「登录时自动启动」开关；状态灯样式（圆形灯 / 像素风格）切换并实时预览。 |
 | 通知 | 「启用系统通知」开关，在 session 进入等待决策或出错时提醒。 |
-| 集成 | 各 agent（Claude Code / Codex / OpenCode / pi）的配置状态，并提供「自动配置 Hook」「重新检查」「打开配置」。 |
+| 集成 | 各 agent（Claude Code / Codex / OpenCode / pi / Hermes）的配置状态，并提供「自动配置 Hook」「重新检查」「打开配置」。 |
 | 关于 | 应用图标、名称、版本与简介。 |
 
 ## 使用 CLI 更新状态
@@ -257,6 +257,7 @@ App 自动推送系统通知的场景：
 - **Codex** —— 通过 `~/.codex/hooks.json` 的 hooks（session_id / cwd 经 stdin JSON 传入）。
 - **OpenCode** —— 通过 `~/.config/opencode/plugins/cc-lights.js` 插件。OpenCode 没有 CLI hooks，插件订阅会话事件（`session.created`、`session.status`、`session.idle`、`session.error`、`session.deleted`、`permission.updated`）后调用内置的 `cc-lights`。
 - **pi** —— 通过 `~/.pi/agent/extensions/cc-lights.ts` 扩展。pi 同样没有 CLI hooks，扩展订阅 pi 生命周期事件（`agent_start` → working、`agent_settled` → idle、`session_shutdown` → remove、权限类 `tool_call` → waiting、出错的 `tool_result` → error）后调用内置的 `cc-lights`。
+- **Hermes Agent** —— 通过 `~/.hermes/plugins/cc-lights/` 插件（`plugin.yaml` + `__init__.py`），并用 `hermes plugins enable cc-lights` 启用（Hermes 插件为手动启用制）。插件注册 Hermes 生命周期 hooks（`pre_llm_call`/`post_llm_call` → working/idle、`pre_approval_request`/`post_approval_response` → waiting/working、`clarify` 工具调用 → waiting、不可自动恢复的 `api_request_error` → error、`on_session_finalize` → remove）后调用内置的 `cc-lights`。已知限制：Hermes 的 `on_session_start` 在首次模型调用时才触发，因此灯在发出第一条消息时才亮起；gateway 会话（Telegram 机器人等）没有 TTY，灯亮但无法点击跳转。
 推荐将 `cc-lights` 与 agent hooks 结合，自动更新状态：
 
 ```bash
@@ -282,7 +283,7 @@ cc-lights hook idle      # Stop
 cc-lights hook remove    # SessionEnd
 ```
 
-首次启动时 App 会自动安装 `cc-lights` 并为四个 agent 写好配置（各文件均先备份），之后重启一次对应 agent 即可：`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.config/opencode/plugins/cc-lights.js`、`~/.pi/agent/extensions/cc-lights.ts`。你也可以随时在「偏好设置 → 集成」里重新执行「自动配置」。
+首次启动时 App 会自动安装 `cc-lights` 并为五个 agent 写好配置（各文件均先备份），之后重启一次对应 agent 即可：`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.config/opencode/plugins/cc-lights.js`、`~/.pi/agent/extensions/cc-lights.ts`、`~/.hermes/plugins/cc-lights/`。你也可以随时在「偏好设置 → 集成」里重新执行「自动配置」。
 
 CI/CD 或自定义场景中，也可以在 agent 会话里按需手动调用：
 
@@ -300,7 +301,7 @@ CI/CD 或自定义场景中，也可以在 agent 会话里按需手动调用：
 
 ### CC Lights 是什么？
 
-CC Lights（Claude Code Status Light）是一款开源的 macOS 状态栏 App，把每个 Claude Code / Codex / OpenCode / pi 会话变成一个彩色状态灯，让你无需切换窗口就能一眼看出 agent 是在工作、等待输入、空闲、离线还是出错。
+CC Lights（Claude Code Status Light）是一款开源的 macOS 状态栏 App，把每个 Claude Code / Codex / OpenCode / pi / Hermes 会话变成一个彩色状态灯，让你无需切换窗口就能一眼看出 agent 是在工作、等待输入、空闲、离线还是出错。
 
 ### 支持哪些终端？
 
