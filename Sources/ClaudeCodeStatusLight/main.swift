@@ -3791,12 +3791,36 @@ enum HermesConfigChecker {
 
 
         def _on_pre_approval_request(session_id: str = "", parent_session_id: str = "",
-                                     command: str = "", description: str = "", **_: Any) -> None:
+                                     surface: str = "", command: str = "", description: str = "", **_: Any) -> None:
+            # surface="smart" is the guardian-LLM step, announced before any verdict exists.
+            # An APPROVE/DENY is decided with no human involved, so a yellow light and a
+            # notification would call the user over for a decision they never make — stay
+            # silent. A human decision is never lost: an ESCALATE (or a smart DENY the owner
+            # may still override) falls through to the human path, which announces itself with
+            # its own surface — "cli" (approval._human_decision), "gateway"
+            # (approval_gateway_wait._await_gateway_decision), or "transport:<name>"
+            # (approval_prompt._present_with_selected_transport). Matching only "smart"
+            # leaves every human-facing surface untouched.
+            #
+            # If Hermes later exposes a documented way to tell a guardian verdict from a
+            # human one (see NousResearch/hermes-agent#105391), switch to that instead of
+            # keying on the surface string.
+            #
+            # Known limitation: approval payloads carry no parent_session_id (approval_context
+            # injects only session_id/turn_id/tool_call_id), so a subagent's approval light
+            # relies on the _CHILD_TO_PARENT fallback in _emit. If subagent_start was missed
+            # (e.g. the plugin loaded mid-session) the child keeps its own light instead of
+            # folding into the parent's aggregate — extra light, never a missed alert.
+            if surface == "smart":
+                return
             _emit("waiting", session_id=session_id, parent_session_id=parent_session_id,
                   message=_truncate(description or command))
 
 
         def _on_post_approval_response(session_id: str = "", parent_session_id: str = "", **_: Any) -> None:
+            # A guardian-LLM verdict (decided_by="aux_llm") resolved without a human and
+            # never lit the light, so there is nothing to clear — just report progress.
+            # Human approvals, smart escalations included, clear the yellow light here.
             _emit("working", session_id=session_id, parent_session_id=parent_session_id)
 
 
